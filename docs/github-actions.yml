@@ -1,0 +1,106 @@
+# Quell CI — GitHub Actions workflow template
+#
+# Copy this file to .github/workflows/quell.yml in your project.
+# Then set these repository secrets (Settings → Secrets → Actions):
+#   ANTHROPIC_API_KEY  (only if you have UNKNOWN operators needing LLM)
+#
+# Quell runs automatically on every pull request and posts a score
+# comment showing the mutation score delta and any verified test fixes.
+#
+# Docs: https://quell.build/docs/github-actions
+
+name: Quell — Mutation Score
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main, master]
+
+permissions:
+  pull-requests: write   # needed to post PR comments
+  contents: read
+
+jobs:
+  quell:
+    name: Mutation Score
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history needed for git diff --diff-only
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install uv
+          uv sync --dev
+
+      - name: Install Quell
+        run: pip install quelltest
+
+      - name: Initialise Quell config (first run only)
+        run: |
+          if ! grep -q "\[tool.quell\]" pyproject.toml 2>/dev/null; then
+            quell init
+          fi
+
+      - name: Run mutation testing
+        # Use --diff-only on PRs (fast, 2-3 min) and full run on main push (thorough)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            uv run mutmut run --paths-to-mutate src/   # adjust path to your source dir
+          else
+            uv run mutmut run
+          fi
+
+      - name: Run Quell CI
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            quell ci \
+              --diff-only \
+              --threshold 0.60 \
+              --report json \
+              || true   # don't fail the job on threshold miss — comment handles it
+          else
+            quell ci --report json || true
+          fi
+
+      - name: Post PR comment
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          quell github-comment \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}"
+
+      - name: Upload Quell report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quell-report
+          path: .quell/
+          if-no-files-found: ignore
+
+      - name: Generate badge (main branch only)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        run: quell score --badge
+
+      - name: Commit badge to repo (main branch only)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        run: |
+          git config user.name "quell-bot"
+          git config user.email "bot@quell.build"
+          git add .quell/badge.svg || true
+          git diff --staged --quiet || git commit -m "chore: update quell score badge"
+          git push || true

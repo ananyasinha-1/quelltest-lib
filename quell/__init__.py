@@ -1,6 +1,6 @@
-"""Quell — Auto-generates verified killing tests for survived mutants."""
+"""Quell — Verified AI test synthesis. Proves every test catches real bugs."""
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 __author__ = "Shashank Bindal"
 
 from quell.core.models import SurvivedMutant, GeneratedTest, VerificationResult, AuditEntry

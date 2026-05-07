@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "quelltest"
-version = "0.2.0"
+version = "0.3.0"
 description = "Verified AI test synthesis — proves every generated test catches real bugs"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -33,6 +33,12 @@ dependencies = [
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.0.0"]
+github = [
+    "PyJWT>=2.8.0",
+    "cryptography>=42.0.0",
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=5.0.0",
@@ -46,12 +52,13 @@ dev = [
 [project.scripts]
 quell = "quell.cli:app"
 quell-mcp = "quell.mcp_server:main"
+quell-github-app = "quell.github.app:main"
 
 [project.urls]
-Homepage = "https://github.com/shashank7109/quell"
-Documentation = "https://quell.dev"
-Repository = "https://github.com/shashank7109/quell"
-Issues = "https://github.com/shashank7109/quell/issues"
+Homepage = "https://quell.build"
+Documentation = "https://quell.build/docs"
+Repository = "https://github.com/shashank7109/quelltest_lib"
+Issues = "https://github.com/shashank7109/quelltest_lib/issues"
 
 [tool.hatch.version]
 path = "quell/__init__.py"

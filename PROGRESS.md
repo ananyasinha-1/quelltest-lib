@@ -27,6 +27,19 @@
 | `quell.sdk.Quell` SDK class | `quell/sdk.py` | ✅ |
 | Tests for ci/ and score/ | `tests/ci/`, `tests/score/` | ✅ |
 
+### P3 — Integrations (done)
+
+| Feature | Files | Status |
+|---------|-------|--------|
+| GitHub PR comment formatter | `quell/github/formatter.py` | ✅ |
+| GitHub PR commenter (API) | `quell/github/pr_commenter.py` | ✅ |
+| GitHub App auth (JWT) | `quell/github/auth.py` | ✅ |
+| GitHub App webhook server | `quell/github/app.py` | ✅ |
+| `quell github-comment` CLI | `quell/cli.py` | ✅ |
+| GitHub Actions template | `docs/github-actions.yml` | ✅ |
+| VS Code extension scaffold | `vscode-quell/` | ✅ |
+| PyPI publish (v0.3.0) | `dist/quelltest-0.3.0*` | ✅ |
+
 ---
 
 ## Current Test Coverage
@@ -43,17 +56,65 @@ Run: `uv run pytest tests/ -v`
 
 ---
 
+## PyPI
+
+Package: `quelltest` — `pip install quelltest`
+Published: v0.1.0 → v0.2.0 → v0.3.0
+
+Install extras:
+```bash
+pip install quelltest[mcp]     # MCP server for AI agents
+pip install quelltest[github]  # GitHub App + PR commenter
+```
+
+---
+
+## VS Code Extension
+
+Location: `vscode-quell/`
+Status: Scaffolded — TypeScript source complete, NOT yet published to Marketplace.
+
+To publish (requires `vsce` and a Marketplace publisher account):
+```bash
+cd vscode-quell
+npm install
+npm run compile
+npx vsce package        # produces vscode-quell-0.1.0.vsix
+npx vsce publish        # needs VSCE_PAT env var
+```
+
+To test locally:
+```bash
+code --install-extension vscode-quell-0.1.0.vsix
+```
+
+---
+
+## GitHub App (quell.build)
+
+Location: `quell/github/app.py`
+Status: Code complete — NOT yet deployed.
+
+To deploy on Render:
+1. Create a new Web Service pointing to the library repo
+2. Start command: `quell-github-app`
+3. Set env vars: `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`
+4. Point GitHub App webhook URL to: `https://quell.build/github/webhook`
+
+GitHub App setup (https://github.com/settings/apps/new):
+- Name: Quell
+- Homepage: https://quell.build
+- Webhook URL: https://quell.build/github/webhook
+- Permissions: Pull requests (read/write), Contents (read)
+- Events: Pull request
+
+---
+
 ## Pending Phases
-
-### P3 — Integrations (not started)
-
-- [ ] GitHub App — post PR comments with verified test suggestions
-- [ ] VS Code extension — inline mutation score warnings per function
-- [ ] `quell-sdk` stable API + PyPI publish as standalone
 
 ### P4 — Cloud (not started)
 
-- [ ] Badge hosting at `https://quell.dev/badge/{user}/{repo}`
+- [ ] Badge hosting at `https://quell.build/badge/{user}/{repo}`
 - [ ] Team dashboard — mutation score trends over time
 - [ ] Enterprise: SSO, audit logs, air-gapped mode
 
@@ -67,14 +128,11 @@ Run: `uv run pytest tests/ -v`
 
 ## Known Limitations / TODOs
 
-- `quell/sdk.py` `verify_test()` has a minor import duplication (`MutmutAdapter`
-  imported twice in the async method — harmless but should be cleaned up)
-- `quell-mcp` is untested end-to-end (requires `pip install quell[mcp]` and
-  a running MCP-compatible agent)
-- `quell repair` re-runs mutmut from scratch if no cache exists; on large
-  projects this is slow — a `--cache-only` flag would help
-- mutmut 3.x does **not** run on Windows without WSL; the adapter handles
-  the error gracefully but CI on Windows will return empty survivors
+- VS Code extension needs to be compiled (`npm run compile`) and published to Marketplace
+- GitHub App webhook server needs deployment to quell.build (Render/Fly.io)
+- `quell repair` re-runs mutmut from scratch if no cache; slow on large projects
+- mutmut 3.x does NOT run on Windows without WSL; adapter handles gracefully
+- `quell/sdk.py` `_fix_all_async` has a redundant `MutmutAdapter` import — harmless
 
 ---
 
@@ -83,6 +141,6 @@ Run: `uv run pytest tests/ -v`
 1. `verifier.py` — ALWAYS restore source files in a `finally` block
 2. `writer.py` — ALWAYS backup before writing, ALWAYS restore on failure
 3. `writer.py` — ALWAYS validate CST parse before writing to disk
-4. No source code is sent to any server unless an LLM provider is configured
-5. LLM is ONLY called for `UNKNOWN` operators — rule engine handles everything else
-6. Verification runs in a subprocess (never in-process) so mutations load fresh
+4. No source code sent to any server unless LLM provider configured
+5. LLM only called for `UNKNOWN` operators — rule engine handles everything else
+6. Verification runs in subprocess (never in-process) so mutations load fresh

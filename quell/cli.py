@@ -8,6 +8,7 @@ Commands:
   quell ci                      CI/CD mode: run mutation testing + auto-fix
   quell score                   Show per-file mutation scores and badge
   quell repair                  Find and strengthen weak AI-generated tests
+  quell github-comment          Post Quell CI results as a GitHub PR comment
   quell report                  Show audit log
   quell init                    Add [tool.quell] to pyproject.toml
 """
@@ -628,6 +629,103 @@ def repair(
         f"([{delta_color}]{delta_str}[/{delta_color}])",
         title="Quell Repair",
     ))
+
+
+@app.command("github-comment")
+def github_comment(
+    repo: str = typer.Option(..., "--repo", "-r", help="owner/repo (e.g. acme/myproject)"),
+    pr: int = typer.Option(..., "--pr", "-p", help="Pull request number"),
+    token: Optional[str] = typer.Option(None, "--token", help="GitHub token (default: $GITHUB_TOKEN)"),
+    report_path: Path = typer.Option(
+        Path(".quell/ci-report.json"), "--report", help="Path to CI report JSON"
+    ),
+    project_root: Path = typer.Option(Path("."), "--root"),
+):
+    """
+    Post Quell CI results as a [bold]GitHub PR comment[/bold].
+
+    Reads the JSON report produced by [bold]quell ci --report json[/bold] and
+    posts (or updates) a formatted comment on the pull request.
+
+    Use this at the end of your GitHub Actions workflow:
+
+      - run: quell ci --diff-only --report json
+      - run: quell github-comment --repo ${{ github.repository }} --pr ${{ github.event.pull_request.number }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    """
+    import os
+    import json as _json
+
+    github_token = token or os.getenv("GITHUB_TOKEN", "")
+    if not github_token:
+        console.print(Panel(
+            "[red]Error:[/red] No GitHub token found.\n\n"
+            "Set [bold]GITHUB_TOKEN[/bold] env var or pass [bold]--token[/bold].\n"
+            "In GitHub Actions, use: [bold]${{ secrets.GITHUB_TOKEN }}[/bold]",
+            title="Quell",
+            border_style="red",
+        ))
+        raise typer.Exit(1)
+
+    if not report_path.exists():
+        console.print(Panel(
+            f"[red]Error:[/red] Report not found at {report_path}\n\n"
+            "Run [bold]quell ci --report json[/bold] first.",
+            title="Quell",
+            border_style="red",
+        ))
+        raise typer.Exit(1)
+
+    asyncio.run(_github_comment_async(github_token, repo, pr, report_path, project_root))
+
+
+async def _github_comment_async(
+    token: str,
+    repo: str,
+    pr_number: int,
+    report_path: Path,
+    project_root: Path,
+) -> None:
+    import json as _json
+    from quell.github.formatter import format_pr_comment
+    from quell.github.pr_commenter import post_or_update_pr_comment
+    from quell.ci.reporter import CIReport
+    from quell.ci.threshold import ThresholdResult
+    from quell.score.calculator import calculate_score, ProjectScore
+
+    report_data = _json.loads(report_path.read_text())
+
+    threshold_result = ThresholdResult(
+        passed=report_data.get("threshold_passed", True),
+        score=report_data.get("score_after", 0.0),
+        threshold=report_data.get("threshold", 0.0),
+        message=(
+            "Threshold met" if report_data.get("threshold_passed", True)
+            else "Threshold not met"
+        ),
+    )
+    ci_report = CIReport(
+        score_before=report_data.get("score_before", 0.0),
+        score_after=report_data.get("score_after", 0.0),
+        fixed_count=report_data.get("fixed", 0),
+        skipped_count=report_data.get("skipped", 0),
+        total_survivors=report_data.get("total_survivors", 0),
+        threshold_result=threshold_result,
+        dry_run=report_data.get("dry_run", False),
+    )
+
+    try:
+        project_score = calculate_score(project_root)
+    except FileNotFoundError:
+        project_score = ProjectScore()
+
+    comment_body = format_pr_comment(ci_report, project_score)
+
+    with console.status(f"Posting comment to PR #{pr_number}..."):
+        status = await post_or_update_pr_comment(token, repo, pr_number, comment_body)
+
+    console.print(f"[green]✓ Comment posted (HTTP {status})[/green]")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,92 @@
+{
+  "name": "vscode-quell",
+  "displayName": "Quell — Mutation Score",
+  "description": "Inline mutation score warnings and verified test fixes powered by Quell",
+  "version": "0.1.0",
+  "publisher": "quell",
+  "license": "MIT",
+  "homepage": "https://quell.build",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shashank7109/quell_frontend"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Testing", "Linters"],
+  "keywords": ["mutation testing", "testing", "pytest", "quell", "ai testing"],
+  "icon": "images/icon.png",
+  "activationEvents": ["onLanguage:python"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "quell.showScore",
+        "title": "Quell: Show Mutation Score",
+        "icon": "$(testing-passed-icon)"
+      },
+      {
+        "command": "quell.repairFile",
+        "title": "Quell: Repair Current File"
+      },
+      {
+        "command": "quell.fixAll",
+        "title": "Quell: Fix All Survivors"
+      },
+      {
+        "command": "quell.runScan",
+        "title": "Quell: Scan for Survivors"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "quell.showScore",
+          "when": "resourceLangId == python",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Quell",
+      "properties": {
+        "quell.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Python interpreter. Leave empty to use the active Python environment."
+        },
+        "quell.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically refresh mutation score when a Python file is saved."
+        },
+        "quell.showInlineDecorations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline score annotations on function definitions."
+        },
+        "quell.threshold": {
+          "type": "number",
+          "default": 0.6,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Score below this threshold triggers a warning decoration (0–1)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0"
+  }
+}
