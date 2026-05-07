@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "1.0",
+  "thresholds": {
+    "high": 80,
+    "low": 60
+  },
+  "files": {
+    "src/calculator.js": {
+      "language": "javascript",
+      "source": "function divide(a, b) {\n  if (b === 0) {\n    throw new Error('Cannot divide by zero');\n  }\n  return a / b;\n}\n\nfunction isAdult(age) {\n  return age >= 18;\n}\n\nmodule.exports = { divide, isAdult };\n",
+      "mutants": [
+        {
+          "id": "1",
+          "mutatorName": "BinaryExpression",
+          "replacement": "b !== 0",
+          "location": {
+            "start": { "line": 2, "column": 7 },
+            "end": { "line": 2, "column": 14 }
+          },
+          "status": "Survived"
+        },
+        {
+          "id": "2",
+          "mutatorName": "BinaryExpression",
+          "replacement": "age > 18",
+          "location": {
+            "start": { "line": 8, "column": 10 },
+            "end": { "line": 8, "column": 18 }
+          },
+          "status": "Survived"
+        },
+        {
+          "id": "3",
+          "mutatorName": "BinaryExpression",
+          "replacement": "a * b",
+          "location": {
+            "start": { "line": 5, "column": 9 },
+            "end": { "line": 5, "column": 14 }
+          },
+          "status": "Killed"
+        }
+      ]
+    }
+  }
+}

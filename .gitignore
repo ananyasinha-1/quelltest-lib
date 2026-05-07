@@ -1,0 +1,32 @@
+# Website (separate repo)
+web/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+.env.*
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mutmut-cache
+
+# Editors / OS
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# Internal
+CLAUDE.md
+.quell/
