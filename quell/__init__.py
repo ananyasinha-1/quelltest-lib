@@ -1,21 +1,25 @@
-"""Quell — Verified AI test synthesis. Proves every test catches real bugs."""
+"""
+Quell — Your docstrings say what your code should do. Quell proves it.
 
-__version__ = "0.3.0"
+Quick start:
+    from quell import Quell
+    q = Quell()
+    result = q.check("src/")
+    print(f"Score: {result.score:.0%} | Gaps: {len(result.uncovered)}")
+"""
+__version__ = "0.1.0"
 __author__ = "Shashank Bindal"
 
-from quell.core.models import SurvivedMutant, GeneratedTest, VerificationResult, AuditEntry
-from quell.core.analyzer import MutationAnalyzer
-from quell.core.generator import TestGenerator
-from quell.core.verifier import MutantVerifier
-from quell.core.writer import TestWriter
+from quell.sdk import Quell, CheckResult
+from quell.core.models import (
+    Requirement, ConstraintKind, SpecSource,
+    GeneratedTest, VerificationResult, VerificationStatus,
+    QuellConfig, ProjectScore, FileScore,
+)
 
 __all__ = [
-    "SurvivedMutant",
-    "GeneratedTest",
-    "VerificationResult",
-    "AuditEntry",
-    "MutationAnalyzer",
-    "TestGenerator",
-    "MutantVerifier",
-    "TestWriter",
+    "Quell", "CheckResult",
+    "Requirement", "ConstraintKind", "SpecSource",
+    "GeneratedTest", "VerificationResult", "VerificationStatus",
+    "QuellConfig", "ProjectScore", "FileScore",
 ]

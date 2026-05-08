@@ -1,19 +1,39 @@
 # quelltest
 
-> Auto-generate verified killing tests for survived mutants from mutmut and Stryker.
+> Your docstrings say what your code should do. Quell proves it.
 
 [![PyPI](https://img.shields.io/pypi/v/quelltest)](https://pypi.org/project/quelltest/)
 [![Python](https://img.shields.io/pypi/pyversions/quelltest)](https://pypi.org/project/quelltest/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Quell reads your mutation testing results, generates pytest assertions that kill each surviving mutant, verifies them, and injects them directly into your test files — without touching your formatting.
+Quell reads specifications that already exist in your codebase — docstrings, Pydantic models, bug reports — extracts every testable requirement, checks which ones have no test, generates a test for each gap, **proves** the test actually catches violations, then writes it to disk. Every test is verified before it touches your files.
+
+## Why Quell is different
+
+| Tool | Spec source | Verified? |
+|------|------------|-----------|
+| Qodo Gen | reads implementation | ❌ |
+| GitHub Copilot | chat prompt | ❌ |
+| Hypothesis | you write it manually | ❌ |
+| **Quell** | reads existing specs | ✅ |
+
+**The critical insight:** Qodo reads your implementation and generates tests for what your code *does*. If your code has a bug, Qodo generates tests that bless it. Quell reads your specification (docstring says "must raise ValueError") and generates a test that proves the requirement — catching the bug.
 
 ## How it works
 
-1. **Scan** — reads `.mutmut-cache` or Stryker JSON. Finds all survived mutants.
-2. **Generate** — deterministic rule-based generators handle 9 operator types. No LLM call needed for the common cases.
-3. **Verify** — every generated test runs against the live mutant in isolation. Tests that don't kill are discarded.
-4. **Inject** — verified tests are written using libcst, a lossless concrete syntax tree parser. Comments, spacing, and formatting are preserved exactly. Source files are backed up first.
+```
+docstrings + Pydantic models + bug reports
+         ↓
+   list[Requirement]
+         ↓
+   Coverage checker (AST scan — no execution)
+         ↓
+   Rule engine → verified test
+         ↓
+   Verification: PASS on correct code + FAIL on violated code
+         ↓
+   libcst injection into test file
+```
 
 ## Installation
 
@@ -21,46 +41,56 @@ Quell reads your mutation testing results, generates pytest assertions that kill
 pip install quelltest
 ```
 
-Requires Python 3.11+.
+Requires Python 3.11+. The CLI command is `quell`.
 
 ## Quick start
 
 ```bash
-# Run your mutation tool first
-mutmut run
-# or
-npx stryker run --reporters=json
+# Scan your specs, find gaps
+quell check src/
 
-# Scan survived mutants
-quell scan --source mutmut
+# Generate + verify + write tests for all gaps
+quell check src/ --fix
 
-# Generate and inject killing tests
-quell fix
+# Reproduce a bug from a description
+quell reproduce "payment accepts zero amount"
 
-# Preview without writing
-quell fix --dry-run
+# Show confidence score for a file
+quell prove src/payments.py
 
-# Auto-fix all without prompts
-quell auto
+# Project-wide Quell Score
+quell score --badge
 ```
 
-## Supported mutation operators
+## Example
 
-Nine operators have deterministic rule-based generators — no network call required:
+Given this existing code:
 
-| Operator | Example |
-|----------|---------|
-| `BOUNDARY_SHIFT` | `>` → `>=` |
-| `ARITHMETIC_OP` | `+` → `-` |
-| `LOGICAL_OP` | `and` → `or` |
-| `COMPARISON_OP` | `==` → `!=` |
-| `RETURN_VALUE` | `return x` → `return None` |
-| `STATEMENT_DEL` | statement removed |
-| `CONSTANT_MUTATION` | `0` → `1` |
-| `DECORATOR_REMOVAL` | decorator stripped |
-| `COLLECTION_OP` | `append` → `remove` |
+```python
+def process_payment(request: PaymentRequest) -> dict:
+    """
+    Process a payment transaction.
 
-`UNKNOWN` operators fall back to an LLM if a provider is configured.
+    Args:
+        request: Amount must be greater than 0. Currency must be one of: USD, EUR, GBP.
+
+    Returns:
+        dict with transaction_id, status, amount.
+
+    Raises:
+        ValueError: If amount is zero or negative.
+    """
+```
+
+And this Pydantic model:
+
+```python
+class PaymentRequest(BaseModel):
+    amount: float = Field(gt=0)
+    currency: Literal["USD", "EUR", "GBP"]
+```
+
+Running `quell check src/payments.py` finds **5 requirements** with no tests and generates a verified test for each one — before touching your files.
 
 ## Configuration
 
@@ -70,14 +100,15 @@ quell init   # adds [tool.quell] to pyproject.toml
 
 ```toml
 [tool.quell]
-llm_provider = "anthropic"         # "anthropic" | "openai" | "ollama"
-llm_model    = "claude-sonnet-4-6"
-max_verification_attempts   = 3
-verification_timeout_seconds = 30
-auto_write = false
+llm_provider = "anthropic"          # "anthropic" | "openai" | "ollama"
+llm_model    = "claude-sonnet-4-5"
+enable_docstring = true
+enable_types     = true
+enable_mutations = false            # mutmut optional
+auto_write       = false
 ```
 
-Set your LLM API key (only needed for UNKNOWN operators):
+Set your LLM API key (only needed for complex/unstructured specs):
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -85,60 +116,65 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export OPENAI_API_KEY=sk-...
 ```
 
-For a fully local/offline setup, use Ollama:
+For fully local/offline setup, use Ollama:
 
 ```bash
-quell fix --llm ollama   # requires ollama running locally
+# In pyproject.toml: llm_provider = "ollama"
+# ollama pull codellama
 ```
 
-## Privacy
+## Python SDK
 
-- Your code is never sent to any server unless you configure an LLM provider.
-- LLM is called only for `UNKNOWN` operators — the rule engine handles everything else.
-- All source file mutations are done locally in a subprocess and reverted afterwards.
+```python
+from quell import Quell
 
-## Adapters
+q = Quell()
 
-| Tool | Format | Status |
-|------|--------|--------|
-| mutmut | `.mutmut-cache` (SQLite) | ✅ Supported |
-| Stryker (JS/TS) | `reports/mutation/mutation.json` | ✅ Supported |
-| PIT (Java) | XML | 🔜 Planned |
+# Find requirement gaps
+result = q.check("src/")
+print(f"Score: {result.score:.0%} | Gaps: {len(result.uncovered)}")
+
+# Reproduce a bug
+q.reproduce("payment accepts zero amount silently")
+
+# Project score
+score = q.score()
+print(f"Project: {score.percentage}%")
+```
 
 ## Project structure
 
 ```
 quell/
-├── cli.py              # Typer CLI entry point
-├── adapters/           # mutmut + Stryker result parsers
+├── cli.py              # Typer CLI: check, reproduce, prove, score, ci, init
+├── sdk.py              # Python API: Quell class
+├── spec/               # Spec readers (docstring, type, bug, mutation)
 ├── core/
-│   ├── analyzer.py     # classifies mutation operators from AST diffs
-│   ├── generator.py    # rule-based test generators for 9 operators
-│   ├── verifier.py     # runs tests against live mutants in subprocess
-│   └── writer.py       # libcst-based test file injection
-├── llm/                # LLM client + Anthropic / OpenAI / Ollama providers
-└── ui/                 # Rich terminal UI (progress, diffs, console)
+│   ├── models.py       # Requirement, ConstraintKind, VerificationResult
+│   ├── verifier.py     # THE MOAT — proves every test catches violations
+│   └── writer.py       # libcst injection, backup/restore
+├── coverage/           # AST-based coverage checker
+├── synthesis/          # rule_engine.py + llm_engine.py
+├── score/              # Quell Score calculator + SVG badge
+└── llm/                # Anthropic / OpenAI / Ollama providers
 ```
 
 ## Development
 
 ```bash
-# Clone and install
 git clone https://github.com/shashank7109/quelltest_lib.git
 cd quelltest_lib
-uv sync
+uv sync --dev
 
-# Run tests
 uv run pytest tests/ -v
-
-# Lint
 uv run ruff check . --fix
+uv run mypy quell/
 ```
 
 ## Related
 
-- [quell_frontend](https://github.com/shashank7109/quell_frontend) — Next.js dashboard
-- [quell_backend](https://github.com/shashank7109/quell_backend) — FastAPI backend
+- [Docs](https://quell.buildsbyshashank.tech/docs)
+- [quell_frontend](https://github.com/shashank7109/quell_frontend) — Next.js website
 
 ## License
 

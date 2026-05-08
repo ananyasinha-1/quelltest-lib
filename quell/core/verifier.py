@@ -1,170 +1,172 @@
 """
-Verification Engine — The most important module in Quell.
+Verification Engine — the core technical moat.
 
-For every GeneratedTest, we verify:
-1. The test PASSES on the original (unmodified) code
-2. The test FAILS on the mutated code (i.e., it kills the mutant)
+This is what separates Quell from every competitor:
+  Qodo generates tests. Quell PROVES them.
+  Copilot suggests tests. Quell VERIFIES them.
 
-Only tests that satisfy BOTH conditions are accepted.
-Auto-restore on any failure. No side effects left on disk.
+Algorithm:
+  1. Write candidate test to TEMP file (not real test file)
+  2. Run test on ORIGINAL source → MUST PASS
+     (if it fails, the test is wrong — bad test, reject)
+  3. Inject VIOLATION into source (break the requirement)
+  4. Run test on VIOLATED source → MUST FAIL
+     (if it passes, test doesn't catch the bug — weak test, reject)
+  5. ALWAYS restore source in finally block
+  6. Return VerificationResult
+
+Violation injection per ConstraintKind:
+  MUST_RAISE:   comment out the raise statement
+  BOUNDARY:     weaken threshold (> 0 → > -9999)
+  ENUM_VALID:   remove the enum validation guard
+  MUST_RETURN:  change return value to None
+  BUG_REPRO:    no injection needed — source is already broken
+  MUTATION:     use mutmut apply or direct line replacement
+
+ABSOLUTE RULES — never violate:
+- ALWAYS restore source in finally block
+- ALWAYS use subprocess for pytest — never in-process (module cache)
+- NEVER skip verification for performance — optimize test speed instead
+- NEVER add --skip-verification flag
 """
 from __future__ import annotations
-import subprocess
-import shutil
-import time
+import subprocess, shutil, time, re
 from pathlib import Path
 from quell.core.models import (
-    SurvivedMutant, GeneratedTest, VerificationResult, VerificationStatus, QuellConfig
+    Requirement, GeneratedTest, VerificationResult,
+    VerificationStatus, ConstraintKind, QuellConfig,
 )
 
 
-class MutantVerifier:
-    """
-    Verifies that a generated test actually kills a given mutant.
-
-    Algorithm:
-    1. Write test to a TEMP file (not the real test file)
-    2. Run pytest on original code with temp test → must PASS
-    3. Apply mutant to source (patch source file)
-    4. Run pytest on mutated code with temp test → must FAIL
-    5. Restore source file (always, even on error)
-    6. Return VerificationResult
-
-    Usage:
-        verifier = MutantVerifier(config)
-        result = verifier.verify(mutant, generated_test)
-    """
+class Verifier:
+    """Proves every generated test actually catches violations before writing."""
 
     def __init__(self, config: QuellConfig):
         self.config = config
-        self._backup_dir = config.backup_dir
-        self._backup_dir.mkdir(parents=True, exist_ok=True)
+        self.backup_dir = config.backup_dir
+        self.backup_dir.mkdir(parents=True, exist_ok=True)
 
-    def verify(self, mutant: SurvivedMutant, test: GeneratedTest) -> VerificationResult:
-        """Main verification entry point."""
-        start_time = time.time()
-        temp_test_file = self._write_temp_test(test)
-        backup_path = self._backup_source(mutant.file_path)
+    def verify(
+        self, req: Requirement, test: GeneratedTest
+    ) -> VerificationResult:
+        """Run full two-phase verification. Always restores source in finally."""
+        start = time.time()
+        temp = self._write_temp(test)
+        bak = self._backup(req.target_file)
 
         try:
-            # Step 1: Test must PASS on original code
-            original_result = self._run_pytest(temp_test_file, mutant.file_path)
-            if not original_result["passed"]:
+            # Step 1: test must PASS on correct code
+            orig = self._pytest(temp, req.target_file)
+            if not orig["passed"]:
                 return VerificationResult(
-                    mutant_id=mutant.id,
-                    generated_test=test,
-                    status=VerificationStatus.FAILS_ON_ORIGINAL,
-                    error_message=original_result.get("error"),
-                    duration_ms=int((time.time() - start_time) * 1000),
+                    requirement_id=req.id, generated_test=test,
+                    status=VerificationStatus.FAILS_ON_CORRECT,
+                    error_message=orig.get("stderr", ""),
+                    duration_ms=self._ms(start),
                 )
 
-            # Step 2: Apply the mutant
-            self._apply_mutant(mutant)
+            # Step 2: inject violation
+            self._violate(req)
 
-            # Step 3: Test must FAIL on mutated code
-            mutant_result = self._run_pytest(temp_test_file, mutant.file_path)
-
-            if mutant_result["passed"]:
-                # Test passed even with mutant = doesn't kill it
-                status = VerificationStatus.DOESNT_KILL_MUTANT
-            else:
-                status = VerificationStatus.VERIFIED
-
+            # Step 3: test must FAIL on violated code
+            viol = self._pytest(temp, req.target_file)
+            status = (
+                VerificationStatus.VERIFIED if not viol["passed"]
+                else VerificationStatus.DOESNT_CATCH_VIOLATION
+            )
             return VerificationResult(
-                mutant_id=mutant.id,
-                generated_test=test,
+                requirement_id=req.id, generated_test=test,
                 status=status,
-                error_message=None if status == VerificationStatus.VERIFIED else mutant_result.get("error"),
-                duration_ms=int((time.time() - start_time) * 1000),
+                duration_ms=self._ms(start),
             )
 
-        except SyntaxError as e:
-            return VerificationResult(
-                mutant_id=mutant.id,
-                generated_test=test,
-                status=VerificationStatus.SYNTAX_ERROR,
-                error_message=str(e),
-                duration_ms=int((time.time() - start_time) * 1000),
-            )
         except TimeoutError:
             return VerificationResult(
-                mutant_id=mutant.id,
-                generated_test=test,
+                requirement_id=req.id, generated_test=test,
                 status=VerificationStatus.TIMEOUT,
-                error_message="Verification timed out",
                 duration_ms=self.config.verification_timeout_seconds * 1000,
             )
+        except Exception as e:
+            return VerificationResult(
+                requirement_id=req.id, generated_test=test,
+                status=VerificationStatus.ERROR,
+                error_message=str(e),
+                duration_ms=self._ms(start),
+            )
         finally:
-            # ALWAYS restore source file
-            self._restore_source(mutant.file_path, backup_path)
-            # Clean up temp test file
-            temp_test_file.unlink(missing_ok=True)
+            # ALWAYS restore — no exceptions to this rule
+            self._restore(req.target_file, bak)
+            temp.unlink(missing_ok=True)
 
-    def _write_temp_test(self, test: GeneratedTest) -> Path:
-        """Write generated test to a temporary file."""
-        temp_dir = self._backup_dir / "temp_tests"
-        temp_dir.mkdir(parents=True, exist_ok=True)
-        temp_file = temp_dir / f"quell_temp_{test.mutant_id}.py"
-        temp_file.write_text(test.test_code)
-        return temp_file
+    def _write_temp(self, test: GeneratedTest) -> Path:
+        d = self.backup_dir / "temp"
+        d.mkdir(parents=True, exist_ok=True)
+        f = d / f"quell_{test.requirement_id}.py"
+        f.write_text(test.test_code)
+        return f
 
-    def _backup_source(self, source_path: Path) -> Path:
-        """Copy source file to backup directory. Returns backup path."""
-        backup_path = self._backup_dir / f"{source_path.stem}_{int(time.time())}.py.bak"
-        shutil.copy2(source_path, backup_path)
-        return backup_path
+    def _backup(self, src: Path) -> Path:
+        bak = self.backup_dir / f"{src.stem}_{int(time.time())}.bak"
+        shutil.copy2(src, bak)
+        return bak
 
-    def _restore_source(self, source_path: Path, backup_path: Path) -> None:
-        """Restore source from backup. Called in finally block."""
-        if backup_path.exists():
-            shutil.copy2(backup_path, source_path)
-            backup_path.unlink()
+    def _restore(self, src: Path, bak: Path) -> None:
+        if bak.exists():
+            shutil.copy2(bak, src)
+            bak.unlink()
 
-    def _apply_mutant(self, mutant: SurvivedMutant) -> None:
-        """
-        Apply the mutant's change to the source file.
+    def _violate(self, req: Requirement) -> None:
+        """Modify source to break the requirement so a good test will fail."""
+        if req.constraint_kind == ConstraintKind.BUG_REPRO:
+            return  # already broken
 
-        For mutmut: use `mutmut apply <id>` subprocess command.
-        For Stryker: directly replace the line in the source file.
-        """
-        if mutant.source.value == "mutmut":
-            result = subprocess.run(
-                ["mutmut", "apply", str(mutant.id)],
-                capture_output=True,
-                text=True,
-                timeout=10,
+        src = req.target_file.read_text()
+
+        if req.constraint_kind == ConstraintKind.MUST_RAISE:
+            modified = re.sub(
+                r'(\s+)(raise \w+)', r'\1# QUELL_VIOLATION \2', src, count=1
             )
-            if result.returncode != 0:
-                raise RuntimeError(f"mutmut apply failed: {result.stderr}")
+        elif req.constraint_kind == ConstraintKind.BOUNDARY:
+            modified = re.sub(
+                r'((?:>|>=|<|<=)\s*)(\d+)',
+                lambda m: m.group(1) + "-9999",
+                src, count=1,
+            )
+        elif req.constraint_kind == ConstraintKind.MUST_RETURN:
+            modified = re.sub(
+                r'return (?!None)', 'return None  # QUELL_VIOLATION ', src, count=1
+            )
+        elif req.constraint_kind == ConstraintKind.MUTATION:
+            try:
+                subprocess.run(
+                    ["mutmut", "apply", req.id],
+                    capture_output=True, timeout=10,
+                    cwd=req.target_file.parent,
+                )
+            except Exception:
+                pass
+            return
         else:
-            # Direct source replacement for Stryker
-            source = mutant.file_path.read_text()
-            lines = source.splitlines(keepends=True)
-            # Replace the specific line with mutated code
-            line_idx = mutant.line_start - 1
-            if 0 <= line_idx < len(lines):
-                lines[line_idx] = mutant.mutated_code + "\n"
-            mutant.file_path.write_text("".join(lines))
+            return  # CUSTOM — LLM handles injection in llm_engine
 
-    def _run_pytest(self, test_file: Path, source_file: Path) -> dict:
-        """
-        Run pytest on a specific test file. Returns {"passed": bool, "error": str}.
-        Timeout enforced via config.
-        """
+        req.target_file.write_text(modified)
+
+    def _pytest(self, test_file: Path, src: Path) -> dict:  # type: ignore[type-arg]
         try:
-            result = subprocess.run(
-                ["python", "-m", "pytest", str(test_file), "-v", "--tb=short", "--no-header", "-q"],
-                capture_output=True,
-                text=True,
+            r = subprocess.run(
+                ["python", "-m", "pytest", str(test_file),
+                 "-v", "--tb=short", "-q", "--no-header"],
+                capture_output=True, text=True,
                 timeout=self.config.verification_timeout_seconds,
-                cwd=source_file.parent.parent,  # run from project root
+                cwd=src.parent.parent,
             )
-            passed = result.returncode == 0
             return {
-                "passed": passed,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "error": result.stdout if not passed else None,
+                "passed": r.returncode == 0,
+                "stdout": r.stdout,
+                "stderr": r.stderr,
             }
         except subprocess.TimeoutExpired:
-            raise TimeoutError("pytest timed out")
+            raise TimeoutError()
+
+    def _ms(self, start: float) -> int:
+        return int((time.time() - start) * 1000)

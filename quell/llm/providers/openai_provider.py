@@ -1,18 +1,19 @@
-from __future__ import annotations
-import openai
+from openai import AsyncOpenAI
 from quell.llm.client import LLMClient
 from quell.core.models import QuellConfig
 
 
 class OpenAIProvider(LLMClient):
+    """OpenAI provider. Reads OPENAI_API_KEY from env."""
+
     def __init__(self, config: QuellConfig):
-        self.client = openai.AsyncOpenAI()  # reads OPENAI_API_KEY from env
+        self.client = AsyncOpenAI()
         self.model = config.llm_model
 
     async def generate(self, prompt: str) -> str:
-        response = await self.client.chat.completions.create(
-            model=self.model,
+        """Generate a response from OpenAI."""
+        r = await self.client.chat.completions.create(
+            model=self.model, max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=1024,
         )
-        return response.choices[0].message.content or ""
+        return r.choices[0].message.content or ""

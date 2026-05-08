@@ -3,30 +3,23 @@ from __future__ import annotations
 import pytest
 from pathlib import Path
 from quell.core.models import (
-    SurvivedMutant, MutantSource, MutationOperator, QuellConfig, GeneratedTest
+    Requirement, ConstraintKind, SpecSource, QuellConfig, GeneratedTest
 )
-
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SAMPLE_PROJECT = FIXTURES_DIR / "sample_project"
 
 
 @pytest.fixture
-def sample_calculator_path() -> Path:
-    """Path to the sample calculator source file."""
-    return SAMPLE_PROJECT / "src" / "calculator.py"
+def sample_payments_path() -> Path:
+    """Path to the sample payments source file."""
+    return SAMPLE_PROJECT / "src" / "payments.py"
 
 
 @pytest.fixture
 def sample_test_path() -> Path:
-    """Path to the sample calculator test file."""
-    return SAMPLE_PROJECT / "tests" / "test_calculator.py"
-
-
-@pytest.fixture
-def stryker_report_path() -> Path:
-    """Path to the sample Stryker JSON report."""
-    return FIXTURES_DIR / "stryker_report.json"
+    """Path to the sample payments test file."""
+    return SAMPLE_PROJECT / "tests" / "test_payments.py"
 
 
 @pytest.fixture
@@ -39,82 +32,60 @@ def default_config(tmp_path: Path) -> QuellConfig:
 
 
 @pytest.fixture
-def boundary_mutant(sample_calculator_path: Path) -> SurvivedMutant:
-    """A boundary shift mutant for is_adult (>= → >)."""
-    return SurvivedMutant(
-        id="42",
-        source=MutantSource.MUTMUT,
-        file_path=sample_calculator_path,
-        line_start=20,
-        line_end=20,
-        original_code="    return age >= 18",
-        mutated_code="    return age > 18",
-        operator=MutationOperator.BOUNDARY_SHIFT,
-        function_name="is_adult",
+def must_raise_requirement(sample_payments_path: Path) -> Requirement:
+    """A MUST_RAISE requirement from the payments docstring."""
+    return Requirement(
+        id="test001",
+        description="raises ValueError when amount is zero or negative",
+        constraint_kind=ConstraintKind.MUST_RAISE,
+        source=SpecSource.DOCSTRING,
+        target_function="process_payment",
+        target_file=sample_payments_path,
+        expected_behavior="raises ValueError",
+        raw_spec_text="ValueError: If amount is zero or negative.",
     )
 
 
 @pytest.fixture
-def arithmetic_mutant(sample_calculator_path: Path) -> SurvivedMutant:
-    """An arithmetic swap mutant for discount (- → +)."""
-    return SurvivedMutant(
-        id="7",
-        source=MutantSource.MUTMUT,
-        file_path=sample_calculator_path,
-        line_start=14,
-        line_end=14,
-        original_code="    return price * (1 - pct / 100)",
-        mutated_code="    return price * (1 + pct / 100)",
-        operator=MutationOperator.ARITHMETIC_SWAP,
-        function_name="discount",
+def boundary_requirement(sample_payments_path: Path) -> Requirement:
+    """A BOUNDARY requirement from the payments docstring."""
+    return Requirement(
+        id="test002",
+        description="must be positive",
+        constraint_kind=ConstraintKind.BOUNDARY,
+        source=SpecSource.DOCSTRING,
+        target_function="apply_discount",
+        target_file=sample_payments_path,
+        raw_spec_text="Must be positive.",
     )
 
 
 @pytest.fixture
-def comparison_mutant(sample_calculator_path: Path) -> SurvivedMutant:
-    """A comparison flip mutant (== → !=)."""
-    return SurvivedMutant(
-        id="5",
-        source=MutantSource.MUTMUT,
-        file_path=sample_calculator_path,
-        line_start=5,
-        line_end=5,
-        original_code="    if b == 0:",
-        mutated_code="    if b != 0:",
-        operator=MutationOperator.COMPARISON_FLIP,
-        function_name="divide",
+def enum_requirement(sample_payments_path: Path) -> Requirement:
+    """An ENUM_VALID requirement from the Pydantic model."""
+    return Requirement(
+        id="test003",
+        description="PaymentRequest.currency must be one of ['USD', 'EUR', 'GBP']",
+        constraint_kind=ConstraintKind.ENUM_VALID,
+        source=SpecSource.TYPE,
+        target_function="PaymentRequest",
+        target_file=sample_payments_path,
+        raw_spec_text="currency: Literal['USD', 'EUR', 'GBP']",
     )
 
 
 @pytest.fixture
-def unknown_mutant(sample_calculator_path: Path) -> SurvivedMutant:
-    """An unknown operator mutant."""
-    return SurvivedMutant(
-        id="99",
-        source=MutantSource.STRYKER,
-        file_path=sample_calculator_path,
-        line_start=7,
-        line_end=7,
-        original_code='        raise ValueError("Cannot divide by zero")',
-        mutated_code='        raise ValueError("")',
-        operator=MutationOperator.UNKNOWN,
-        function_name="divide",
-    )
-
-
-@pytest.fixture
-def sample_generated_test(sample_calculator_path: Path) -> GeneratedTest:
+def sample_generated_test(sample_payments_path: Path) -> GeneratedTest:
     """A sample GeneratedTest for testing the writer."""
     return GeneratedTest(
-        mutant_id="42",
-        test_function_name="test_quell_is_adult_mutant_42",
+        requirement_id="test001",
+        test_function_name="test_quell_process_payment_test001",
         test_code=(
-            "def test_quell_is_adult_mutant_42():\n"
-            '    """Kills boundary mutant."""\n'
+            "def test_quell_process_payment_test001():\n"
+            '    """Quell: raises ValueError when amount is zero or negative"""\n'
             "    assert True\n"
         ),
-        test_file_path=sample_calculator_path.parent.parent / "tests" / "test_calculator.py",
-        explanation="Boundary test at value 18",
-        operator=MutationOperator.BOUNDARY_SHIFT,
-        generated_by="rule_based",
+        test_file_path=sample_payments_path.parent.parent / "tests" / "test_payments.py",
+        explanation="pytest.raises(ValueError) test",
+        generated_by="rule_engine",
     )

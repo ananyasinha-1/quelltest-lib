@@ -1,30 +1,25 @@
-"""Abstract LLM client with provider implementations."""
+"""Abstract LLM client + factory."""
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from quell.core.models import QuellConfig
 
 
 class LLMClient(ABC):
-    """Abstract base class for all LLM providers."""
+    """Abstract base for all LLM providers."""
 
     @abstractmethod
     async def generate(self, prompt: str) -> str:
-        """Send prompt and return text response."""
+        """Send prompt, return text response."""
         ...
 
     @classmethod
     def from_config(cls, config: QuellConfig) -> "LLMClient":
-        """Factory method: creates provider from config."""
+        """Factory: create provider from config."""
         from quell.llm.providers.anthropic_provider import AnthropicProvider
         from quell.llm.providers.openai_provider import OpenAIProvider
         from quell.llm.providers.ollama_provider import OllamaProvider
-
-        providers = {
+        return {
             "anthropic": AnthropicProvider,
             "openai": OpenAIProvider,
             "ollama": OllamaProvider,
-        }
-        provider_cls = providers.get(config.llm_provider)
-        if not provider_cls:
-            raise ValueError(f"Unknown LLM provider: {config.llm_provider}")
-        return provider_cls(config)
+        }[config.llm_provider](config)

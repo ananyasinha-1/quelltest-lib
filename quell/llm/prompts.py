@@ -1,61 +1,32 @@
-"""
-Prompt templates for LLM-based test generation.
-Used when rule-based generation is not sufficient (UNKNOWN operator, complex mutations).
-"""
-from quell.core.models import SurvivedMutant
+"""All prompt templates for LLM-based test generation."""
+from quell.core.models import Requirement
 
 
-def build_test_generation_prompt(mutant: SurvivedMutant) -> str:
-    """Build a structured prompt for test generation."""
+def build_prompt(req: Requirement) -> str:
+    """Build a structured prompt for LLM test generation."""
+    return f"""You are an expert Python test engineer. Write a pytest test function that PROVES a specific requirement holds.
 
-    existing_tests_section = ""
-    if mutant.existing_tests:
-        existing_tests_section = f"""
-EXISTING TESTS IN THE FILE:
-{chr(10).join(f"- {t}" for t in mutant.existing_tests[:10])}
+REQUIREMENT:
+  Description: {req.description}
+  Type: {req.constraint_kind.value}
+  Function: {req.target_function}
+  File: {req.target_file.name}
+  Source spec: {req.raw_spec_text or "not available"}
+  Violation input: {req.violation_input or "infer from description"}
+  Expected behavior: {req.expected_behavior or "infer from description"}
 
-Follow the same testing style and import patterns as the existing tests.
-"""
+RULES FOR YOUR TEST:
+1. Function name MUST start with test_quell_
+2. Must PASS on correct code that satisfies the requirement
+3. Must FAIL when the requirement is violated
+4. Use SPECIFIC assertions — never "assert result is not None" alone
+5. For raises requirements: use pytest.raises(ExceptionType)
+6. Add a docstring explaining what requirement this proves
 
-    function_section = ""
-    if mutant.function_source:
-        function_section = f"""
-ENCLOSING FUNCTION SOURCE CODE:
-```python
-{mutant.function_source}
-```
-"""
-
-    return f"""You are a Python testing expert. Your job is to write a single pytest test function that KILLS a specific surviving mutant.
-
-A "surviving mutant" means: the mutation testing tool changed a line of code, but your existing tests still passed. This means your tests have a gap.
-
-MUTATION DETAILS:
-- File: {mutant.file_path}
-- Line: {mutant.line_start}
-- Original code: {mutant.original_code}
-- Mutated code:  {mutant.mutated_code}
-- Mutation type: {mutant.operator.value}
-{function_section}
-{existing_tests_section}
-
-YOUR TASK:
-Write a pytest test function called `test_quell_{mutant.function_name or "function"}_{mutant.id}` that:
-1. Calls the function with specific inputs
-2. Asserts a SPECIFIC expected output (not "assert result is not None" or "assert result > 0")
-3. Would PASS on the original code
-4. Would FAIL on the mutated code (catching the mutation)
-
-RULES:
-- Output ONLY a Python code block with the test function
-- No imports needed (assume pytest and the module under test are available)
-- No explanations outside the code block
-- The assertion must be specific enough to distinguish original from mutant
-- Add a docstring explaining WHY this test kills the mutant
+Output ONLY a Python code block. No explanation outside the block.
 
 ```python
-def test_quell_{mutant.function_name or "function"}_{mutant.id}():
-    \"\"\"Kills mutant {mutant.id}: {mutant.original_code.strip()} → {mutant.mutated_code.strip()}\"\"\"
-    # Your test here
-```
-"""
+def test_quell_{req.target_function}_{req.id}():
+    \"\"\"Proves: {req.description}\"\"\"
+    # your test here
+```"""

@@ -1,20 +1,22 @@
 """
-End-to-end integration tests for Quell.
+End-to-end integration tests for Quell (spec3 architecture).
 
-These tests exercise the full pipeline: analyzer → generator → verifier → writer
-using the sample calculator project fixture.
+Tests the full pipeline:
+  spec readers → Requirements → coverage checker → rule engine → verifier → writer
 """
 from __future__ import annotations
 import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-from quell.core.analyzer import MutationAnalyzer
-from quell.core.generator import TestGenerator
-from quell.core.verifier import MutantVerifier
-from quell.core.writer import TestWriter
+from quell.spec.docstring_reader import DocstringReader
+from quell.spec.type_reader import TypeReader
+from quell.coverage.checker import CoverageChecker
+from quell.synthesis.rule_engine import RuleEngine
+from quell.core.verifier import Verifier
+from quell.core.writer import Writer
 from quell.core.models import (
-    SurvivedMutant, MutantSource, MutationOperator, QuellConfig, VerificationStatus
+    QuellConfig, VerificationStatus, ConstraintKind
 )
 from quell.llm.client import LLMClient
 
@@ -32,106 +34,100 @@ def mock_llm() -> LLMClient:
     llm = MagicMock(spec=LLMClient)
     llm.generate = AsyncMock(return_value=(
         "```python\n"
-        "def test_quell_divide_99():\n"
-        '    """Test."""\n'
-        "    assert True\n"
+        "def test_quell_process_payment_abc():\n"
+        '    """Proves: raises ValueError when amount is zero."""\n'
+        "    import pytest\n"
+        "    from tests.fixtures.sample_project.src.payments import PaymentRequest, process_payment\n"
+        "    with pytest.raises(ValueError):\n"
+        "        req = PaymentRequest(amount=-1, currency='USD', description='test')\n"
+        "        process_payment(req)\n"
         "```"
     ))
     return llm
 
 
-class TestAnalyzerPipeline:
-    def test_analyzer_enriches_boundary_mutant(self, sample_calculator_path: Path) -> None:
-        mutant = SurvivedMutant(
-            id="1",
-            source=MutantSource.MUTMUT,
-            file_path=sample_calculator_path,
-            line_start=20,
-            line_end=20,
-            original_code="    return age >= 18",
-            mutated_code="    return age > 18",
-        )
-        analyzer = MutationAnalyzer()
-        result = analyzer.analyze(mutant)
+class TestDocstringReaderIntegration:
+    def test_reads_all_requirement_kinds(self, sample_payments_path: Path) -> None:
+        reader = DocstringReader()
+        reqs = reader.read(sample_payments_path)
+        kinds = {r.constraint_kind for r in reqs}
+        assert ConstraintKind.MUST_RAISE in kinds
+        assert ConstraintKind.BOUNDARY in kinds
+        assert ConstraintKind.MUST_RETURN in kinds
 
-        assert result.operator == MutationOperator.BOUNDARY_SHIFT
-        assert result.function_name == "is_adult"
-        assert result.test_file_path is not None
-        assert "test_divide_normal" in result.existing_tests or len(result.existing_tests) > 0
+    def test_all_reqs_have_target_file(self, sample_payments_path: Path) -> None:
+        reqs = DocstringReader().read(sample_payments_path)
+        assert all(r.target_file == sample_payments_path for r in reqs)
 
 
-class TestGeneratorPipeline:
-    async def test_generator_produces_test_for_boundary_mutant(
-        self, mock_llm: LLMClient, sample_calculator_path: Path
+class TestTypeReaderIntegration:
+    def test_reads_pydantic_constraints(self, sample_payments_path: Path) -> None:
+        reader = TypeReader()
+        reqs = reader.read(sample_payments_path)
+        assert len(reqs) >= 3  # amount gt=0, currency Literal, description min_length
+
+    def test_enum_requirement_has_usd(self, sample_payments_path: Path) -> None:
+        reqs = TypeReader().read(sample_payments_path)
+        enum_reqs = [r for r in reqs if r.constraint_kind == ConstraintKind.ENUM_VALID]
+        assert any("USD" in r.description for r in enum_reqs)
+
+
+class TestCoverageCheckerIntegration:
+    def test_marks_uncovered_for_missing_tests(
+        self, sample_payments_path: Path, tmp_path: Path
     ) -> None:
-        config = QuellConfig()
-        generator = TestGenerator(mock_llm, config)
-
-        mutant = SurvivedMutant(
-            id="1",
-            source=MutantSource.MUTMUT,
-            file_path=sample_calculator_path,
-            line_start=17,
-            line_end=17,
-            original_code="    return age >= 18",
-            mutated_code="    return age > 18",
-            operator=MutationOperator.BOUNDARY_SHIFT,
-            function_name="is_adult",
-        )
-
-        test = await generator.generate(mutant)
-        assert test.mutant_id == "1"
-        assert test.operator == MutationOperator.BOUNDARY_SHIFT
-        assert "18" in test.test_code  # boundary value should be in the test
+        reqs = DocstringReader().read(sample_payments_path)
+        checker = CoverageChecker(tmp_path)  # tmp_path has no test files
+        result = checker.check(reqs)
+        assert all(not r.is_covered for r in result)
 
 
-class TestWriterPipeline:
-    def test_writer_injects_test_into_new_file(
-        self, e2e_config: QuellConfig, tmp_path: Path, sample_generated_test
+class TestRuleEnginePipeline:
+    def test_generates_test_for_must_raise(self, sample_payments_path: Path) -> None:
+        reqs = DocstringReader().read(sample_payments_path)
+        must_raise = [r for r in reqs if r.constraint_kind == ConstraintKind.MUST_RAISE]
+        assert must_raise
+
+        engine = RuleEngine()
+        test = engine.generate(must_raise[0])
+        assert test is not None
+        assert test.test_function_name.startswith("test_quell_")
+        assert test.generated_by == "rule_engine"
+
+
+class TestVerifierIntegration:
+    def test_verifier_restores_source(
+        self, e2e_config: QuellConfig, sample_payments_path: Path, tmp_path: Path
     ) -> None:
-        writer = TestWriter(e2e_config)
-        test_file = tmp_path / "test_new.py"
-        test = sample_generated_test.model_copy(update={"test_file_path": test_file})
+        # Copy source to tmp so we don't modify fixture
+        src = tmp_path / "payments.py"
+        src.write_text(sample_payments_path.read_text())
 
-        success = writer.write(test, "42")
+        reqs = DocstringReader().read(sample_payments_path)
+        must_raise = [r for r in reqs if r.constraint_kind == ConstraintKind.MUST_RAISE]
+        req = must_raise[0]
+        req.target_file = src
 
-        assert success
-        assert test_file.exists()
-        content = test_file.read_text()
-        assert "test_quell_is_adult_mutant_42" in content
+        engine = RuleEngine()
+        test = engine.generate(req)
+        assert test is not None
+
+        original_content = src.read_text()
+        verifier = Verifier(e2e_config)
+        verifier.verify(req, test)
+
+        assert src.read_text() == original_content
 
 
-class TestFullPipeline:
-    async def test_analyze_generate_write_pipeline(
-        self,
-        mock_llm: LLMClient,
-        e2e_config: QuellConfig,
-        sample_calculator_path: Path,
-        tmp_path: Path,
+class TestWriterIntegration:
+    def test_writer_creates_and_injects(
+        self, e2e_config: QuellConfig, tmp_path: Path, sample_generated_test: object
     ) -> None:
-        """Full pipeline: analyze a raw mutant, generate a test, write it."""
-        analyzer = MutationAnalyzer()
-        generator = TestGenerator(mock_llm, e2e_config)
-        writer = TestWriter(e2e_config)
-
-        raw_mutant = SurvivedMutant(
-            id="e2e_1",
-            source=MutantSource.MUTMUT,
-            file_path=sample_calculator_path,
-            line_start=20,
-            line_end=20,
-            original_code="    return age >= 18",
-            mutated_code="    return age > 18",
-        )
-
-        enriched = analyzer.analyze(raw_mutant)
-        assert enriched.operator == MutationOperator.BOUNDARY_SHIFT
-
-        generated = await generator.generate(enriched)
-        assert generated.mutant_id == "e2e_1"
-
+        from quell.core.models import GeneratedTest
         test_file = tmp_path / "test_output.py"
-        test = generated.model_copy(update={"test_file_path": test_file})
-        success = writer.write(test, "e2e_1")
+        test = sample_generated_test.model_copy(update={"test_file_path": test_file})  # type: ignore[union-attr]
+        writer = Writer(e2e_config)
+        success = writer.write(test, "test001")
         assert success
         assert test_file.exists()
+        assert "test_quell_" in test_file.read_text()

@@ -1,72 +1,78 @@
-"""All domain models for Quell."""
-
+"""All domain models. Every pipeline stage uses these."""
 from __future__ import annotations
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 from pydantic import BaseModel, Field
 import datetime
 
 
-class MutationOperator(str, Enum):
-    """Classification of what kind of change the mutant made."""
-    BOUNDARY_SHIFT = "boundary_shift"         # > → >=, < → <=
-    ARITHMETIC_SWAP = "arithmetic_swap"       # + → -, * → /
-    LOGICAL_SWAP = "logical_swap"             # and → or, not removal
-    COMPARISON_FLIP = "comparison_flip"       # == → !=
-    CONSTANT_MUTATION = "constant_mutation"   # 0 → 1, True → False, "" → "X"
-    STATEMENT_REMOVAL = "statement_removal"   # removes a whole statement
-    RETURN_MUTATION = "return_mutation"       # return x → return None
-    CONDITION_NEGATE = "condition_negate"     # if x → if not x
-    STRING_MUTATION = "string_mutation"       # "str" → ""
-    UNKNOWN = "unknown"                       # fallback, use LLM
+class SpecSource(str, Enum):
+    DOCSTRING  = "docstring"
+    TYPE       = "type"
+    BUG_REPORT = "bug_report"
+    MUTATION   = "mutation"
 
 
-class MutantSource(str, Enum):
-    MUTMUT = "mutmut"
-    STRYKER = "stryker"
+class ConstraintKind(str, Enum):
+    """The kind of requirement extracted from any spec."""
+    MUST_RAISE   = "must_raise"    # raises ExceptionType under condition
+    MUST_RETURN  = "must_return"   # returns specific value/type
+    BOUNDARY     = "boundary"      # value > / >= / < / <= threshold
+    ENUM_VALID   = "enum_valid"    # value must be one of [X, Y, Z]
+    ENUM_INVALID = "enum_invalid"  # invalid value must be rejected
+    NOT_NONE     = "not_none"      # return must not be None
+    MUTATION     = "mutation"      # survived mutant
+    BUG_REPRO    = "bug_repro"     # reproduce reported bug
+    CUSTOM       = "custom"        # LLM handles free-form
 
 
-class SurvivedMutant(BaseModel):
-    """A mutant that survived — your tests didn't catch this change."""
-    id: str                                  # unique id from the tool
-    source: MutantSource
-    file_path: Path                          # absolute path to source file
-    test_file_path: Optional[Path] = None    # where to inject the killing test
-    line_start: int
-    line_end: int
-    col_start: Optional[int] = None
-    col_end: Optional[int] = None
-    original_code: str                       # the original source line(s)
-    mutated_code: str                        # what the mutant changed it to
-    operator: MutationOperator = MutationOperator.UNKNOWN
-    function_name: Optional[str] = None      # enclosing function (filled by analyzer)
-    function_source: Optional[str] = None    # full source of enclosing function
-    existing_tests: list[str] = Field(default_factory=list)  # existing test names
+class Requirement(BaseModel):
+    """
+    One testable requirement from any specification source.
+
+    Examples:
+      - from docstring "amount must be positive":
+          ConstraintKind.BOUNDARY, target_function="process_payment"
+      - from Pydantic Field(gt=0):
+          ConstraintKind.BOUNDARY, target_function="PaymentRequest"
+      - from bug "accepts zero amount silently":
+          ConstraintKind.BUG_REPRO, target_function="process_payment"
+    """
+    id: str
+    description: str
+    constraint_kind: ConstraintKind
+    source: SpecSource
+    target_function: str
+    target_file: Path
+    violation_input: Optional[dict[str, Any]] = None
+    expected_behavior: Optional[str] = None
+    raw_spec_text: Optional[str] = None
+    is_covered: bool = False
+    covering_tests: list[str] = Field(default_factory=list)
 
 
 class GeneratedTest(BaseModel):
-    """A candidate test function that MIGHT kill the mutant."""
-    mutant_id: str
-    test_function_name: str                  # e.g. test_quell_mutant_42
-    test_code: str                           # full Python function source
+    """A candidate test generated for a Requirement."""
+    requirement_id: str
+    test_function_name: str
+    test_code: str
     test_file_path: Path
-    explanation: str                         # why this test kills the mutant
-    operator: MutationOperator
-    generated_by: str                        # "rule_based" or "llm:claude-3-5-sonnet"
+    explanation: str
+    generated_by: str  # "rule_engine" | "llm:model-name"
 
 
 class VerificationStatus(str, Enum):
-    VERIFIED = "verified"                    # test kills mutant AND passes on original
-    FAILS_ON_ORIGINAL = "fails_on_original"  # test breaks original code (bad test)
-    DOESNT_KILL_MUTANT = "doesnt_kill_mutant"  # mutant still survives
-    SYNTAX_ERROR = "syntax_error"            # generated test has syntax error
-    TIMEOUT = "timeout"                      # verification took too long
-    EQUIVALENT_MUTANT = "equivalent_mutant"  # probably can't be killed (flag it)
+    VERIFIED               = "verified"
+    FAILS_ON_CORRECT       = "fails_on_correct"
+    DOESNT_CATCH_VIOLATION = "doesnt_catch_violation"
+    SYNTAX_ERROR           = "syntax_error"
+    TIMEOUT                = "timeout"
+    ERROR                  = "error"
 
 
 class VerificationResult(BaseModel):
-    mutant_id: str
+    requirement_id: str
     generated_test: GeneratedTest
     status: VerificationStatus
     attempts: int = 1
@@ -74,27 +80,63 @@ class VerificationResult(BaseModel):
     duration_ms: int = 0
 
 
+class FileScore(BaseModel):
+    file_path: Path
+    total_requirements: int
+    covered_requirements: int
+    quell_score: float  # 0.0–1.0
+
+    @property
+    def percentage(self) -> int:
+        return int(self.quell_score * 100)
+
+    @property
+    def grade(self) -> str:
+        if self.quell_score >= 0.80: return "A"
+        if self.quell_score >= 0.60: return "B"
+        if self.quell_score >= 0.40: return "C"
+        return "F"
+
+
+class ProjectScore(BaseModel):
+    files: list[FileScore] = Field(default_factory=list)
+    generated_at: datetime.datetime = Field(
+        default_factory=datetime.datetime.utcnow
+    )
+
+    @property
+    def total_score(self) -> float:
+        total = sum(f.total_requirements for f in self.files)
+        if total == 0: return 0.0
+        return sum(f.covered_requirements for f in self.files) / total
+
+    @property
+    def percentage(self) -> int:
+        return int(self.total_score * 100)
+
+
 class AuditEntry(BaseModel):
-    """Immutable record of every action Quell takes."""
-    timestamp: datetime.datetime = Field(default_factory=datetime.datetime.utcnow)
-    mutant_id: str
-    action: str                              # "test_written", "skipped", "flagged_equivalent"
+    timestamp: datetime.datetime = Field(
+        default_factory=datetime.datetime.utcnow
+    )
+    requirement_id: str
+    action: str
     file_path: Optional[Path] = None
     test_function_name: Optional[str] = None
     verification_status: Optional[VerificationStatus] = None
-    mutation_score_before: Optional[float] = None
-    mutation_score_after: Optional[float] = None
 
 
 class QuellConfig(BaseModel):
-    """Configuration loaded from pyproject.toml [tool.quell] or quell.toml"""
-    llm_provider: str = "anthropic"          # "anthropic" | "openai" | "ollama"
+    llm_provider: str = "anthropic"
     llm_model: str = "claude-sonnet-4-5"
     ollama_base_url: str = "http://localhost:11434"
     max_verification_attempts: int = 3
     verification_timeout_seconds: int = 30
-    auto_write: bool = False                 # if True, skip interactive prompt
-    test_file_pattern: str = "tests/test_{source_file}.py"
-    exclude_operators: list[MutationOperator] = Field(default_factory=list)
+    auto_write: bool = False
     audit_log_path: Path = Path(".quell/audit.jsonl")
     backup_dir: Path = Path(".quell/backups")
+    enable_docstring: bool = True
+    enable_types: bool = True
+    enable_mutations: bool = False  # off by default — mutmut not required
+    score_threshold: float = 0.0
+    diff_only: bool = False

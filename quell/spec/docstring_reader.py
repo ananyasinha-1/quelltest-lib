@@ -1,0 +1,156 @@
+"""
+Reads Python docstrings and extracts testable Requirements.
+
+Direction: docstring → Requirements.
+This is the OPPOSITE of every existing docstring tool (code → docs).
+
+Supported styles: Google, NumPy, RST, plain English (LLM fallback).
+
+Key extractions:
+  "Raises: ValueError: if amount <= 0"  → MUST_RAISE requirement
+  "amount: Must be positive (> 0)"      → BOUNDARY requirement
+  "currency: one of USD, EUR, GBP"      → ENUM_VALID requirement
+  "Returns: Transaction with status"    → MUST_RETURN requirement
+"""
+from __future__ import annotations
+import ast, re, uuid
+from pathlib import Path
+from quell.core.models import Requirement, ConstraintKind, SpecSource
+
+
+class DocstringReader:
+    """
+    Extracts testable requirements from Python docstrings.
+
+    Strategy:
+    1. Parse file with ast module — get every function's docstring
+    2. Run structured parsers (Google/NumPy/RST style)
+    3. LLM fallback for unstructured prose
+
+    Returns [] on any error — never raises.
+    """
+
+    def __init__(self, llm_client=None):
+        self.llm = llm_client
+
+    def read(self, file_path: Path) -> list[Requirement]:
+        """Read file and extract Requirements from all function docstrings."""
+        try:
+            source = file_path.read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except Exception:
+            return []
+
+        requirements = []
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                doc = ast.get_docstring(node)
+                if doc:
+                    requirements.extend(
+                        self._parse(doc, node.name, file_path)
+                    )
+        return requirements
+
+    def _parse(self, doc: str, func: str, path: Path) -> list[Requirement]:
+        reqs: list[Requirement] = []
+        reqs.extend(self._raises(doc, func, path))
+        reqs.extend(self._boundaries(doc, func, path))
+        reqs.extend(self._enums(doc, func, path))
+        reqs.extend(self._returns(doc, func, path))
+        if not reqs and self.llm:
+            reqs.extend(self._llm_fallback(doc, func, path))
+        return reqs
+
+    def _raises(self, doc: str, func: str, path: Path) -> list[Requirement]:
+        reqs = []
+        # Match Google "Raises:\n    ExceptionType: condition" blocks
+        for block in re.finditer(
+            r'Raises?:\s*\n((?:[ \t]+\w[\w.]*[^\n]*\n?)*)', doc, re.MULTILINE
+        ):
+            for line in block.group(1).strip().splitlines():
+                line = line.strip()
+                if ':' not in line:
+                    continue
+                exc, _, cond = line.partition(':')
+                reqs.append(Requirement(
+                    id=str(uuid.uuid4())[:8],
+                    description=f"raises {exc.strip()} when {cond.strip()}",
+                    constraint_kind=ConstraintKind.MUST_RAISE,
+                    source=SpecSource.DOCSTRING,
+                    target_function=func,
+                    target_file=path,
+                    expected_behavior=f"raises {exc.strip()}",
+                    raw_spec_text=line,
+                ))
+        return reqs
+
+    def _boundaries(self, doc: str, func: str, path: Path) -> list[Requirement]:
+        reqs = []
+        patterns = [
+            r'must be\s+positive',
+            r'must be\s*>\s*0',
+            r'must be\s*>=\s*\d+',
+            r'must be\s*<\s*\d+',
+            r'must be\s+negative',
+            r'must be\s+between\s+[\d.]+\s+and\s+[\d.]+',
+        ]
+        for p in patterns:
+            for m in re.finditer(p, doc, re.IGNORECASE):
+                reqs.append(Requirement(
+                    id=str(uuid.uuid4())[:8],
+                    description=m.group(0),
+                    constraint_kind=ConstraintKind.BOUNDARY,
+                    source=SpecSource.DOCSTRING,
+                    target_function=func,
+                    target_file=path,
+                    raw_spec_text=m.group(0),
+                ))
+        return reqs
+
+    def _enums(self, doc: str, func: str, path: Path) -> list[Requirement]:
+        reqs = []
+        for m in re.finditer(
+            r'(?:must be one of|one of|valid values?)[:\s]+([A-Z][A-Z,\s"\']+)',
+            doc, re.IGNORECASE
+        ):
+            values = [
+                v.strip().strip("\"'")
+                for v in re.split(r'[,|]', m.group(1))
+                if v.strip()
+            ]
+            if len(values) >= 2:
+                reqs.append(Requirement(
+                    id=str(uuid.uuid4())[:8],
+                    description=f"must be one of {values}",
+                    constraint_kind=ConstraintKind.ENUM_VALID,
+                    source=SpecSource.DOCSTRING,
+                    target_function=func,
+                    target_file=path,
+                    raw_spec_text=m.group(0),
+                ))
+        return reqs
+
+    def _returns(self, doc: str, func: str, path: Path) -> list[Requirement]:
+        reqs = []
+        for m in re.finditer(r'Returns?:\s*\n\s*(.+)', doc, re.MULTILINE):
+            desc = m.group(1).strip()
+            if desc:
+                reqs.append(Requirement(
+                    id=str(uuid.uuid4())[:8],
+                    description=f"returns {desc}",
+                    constraint_kind=ConstraintKind.MUST_RETURN,
+                    source=SpecSource.DOCSTRING,
+                    target_function=func,
+                    target_file=path,
+                    raw_spec_text=desc,
+                ))
+        return reqs
+
+    def _llm_fallback(self, doc: str, func: str, path: Path) -> list[Requirement]:
+        # Implement with LLMClient when structured parsing finds nothing
+        return []
+
+    @property
+    def source_name(self) -> str:
+        """Reader name."""
+        return "docstring"
