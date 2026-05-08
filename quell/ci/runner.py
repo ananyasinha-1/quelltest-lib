@@ -5,6 +5,7 @@ Supports targeted mode: only check files changed in the current PR.
 This keeps CI runtime under 3 minutes for typical PRs.
 """
 from __future__ import annotations
+
 import subprocess
 from pathlib import Path
 

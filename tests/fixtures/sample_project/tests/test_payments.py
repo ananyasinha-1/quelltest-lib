@@ -1,6 +1,9 @@
 """Minimal existing tests for the payments sample — intentionally incomplete."""
-import pytest
-from tests.fixtures.sample_project.src.payments import PaymentRequest, process_payment, apply_discount
+from tests.fixtures.sample_project.src.payments import (
+    PaymentRequest,
+    apply_discount,
+    process_payment,
+)
 
 
 def test_process_payment_happy_path():

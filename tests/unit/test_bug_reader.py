@@ -1,16 +1,22 @@
 """Unit tests for BugReader."""
 from __future__ import annotations
-import pytest
+
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
-from quell.spec.bug_reader import BugReader
+
+import pytest
+
 from quell.core.models import ConstraintKind, SpecSource
+from quell.spec.bug_reader import BugReader
 
 
 @pytest.fixture
 def mock_llm() -> MagicMock:
     llm = MagicMock()
-    llm.generate = AsyncMock(return_value='{"function_hint": "process_payment", "triggering_inputs": {"amount": 0}, "symptom": "no error raised", "expected_behavior": "raise ValueError"}')
+    llm.generate = AsyncMock(return_value=(
+        '{"function_hint": "process_payment", "triggering_inputs": {"amount": 0},'
+        ' "symptom": "no error raised", "expected_behavior": "raise ValueError"}'
+    ))
     return llm
 
 

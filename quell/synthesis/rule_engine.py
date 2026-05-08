@@ -15,9 +15,11 @@ ConstraintKind → test strategy:
   BUG_REPRO    → skeleton test that currently fails
 """
 from __future__ import annotations
+
 import re
 from pathlib import Path
-from quell.core.models import Requirement, GeneratedTest, ConstraintKind
+
+from quell.core.models import ConstraintKind, GeneratedTest, Requirement
 from quell.synthesis import sig_inspector
 
 
@@ -66,7 +68,7 @@ class RuleEngine:
         For class methods: 'ClassName().method(args)' or 'obj.method(args)'
         """
         sig = sig_inspector.inspect(req.target_function, req.target_file)
-        mod = sig_inspector.module_path(req.target_file)
+        sig_inspector.module_path(req.target_file)
         func = req.target_function
         unknown: list[str] = []
         fixtures: list[str] = []
@@ -111,7 +113,8 @@ class RuleEngine:
 
     def _must_raise(self, req: Requirement) -> GeneratedTest:
         exc = "Exception"
-        m = re.search(r"raises?\s+(\w+Error|\w+Exception|\w+)", req.description, re.I)
+        search_text = req.description + " " + (req.expected_behavior or "")
+        m = re.search(r"\braises?\s+(\w+Error|\w+Exception)", search_text, re.I)
         if m:
             exc = m.group(1)
 
@@ -172,7 +175,10 @@ class RuleEngine:
         name = self._name(req)
 
         # Replace the first string arg with an invalid enum value
-        enum_call = re.sub(r'"test_value"', '"__INVALID_ENUM__"', call, count=1)
+        enum_call = re.sub(r'"test_value"', '"INVALID_VALUE"', call, count=1)
+        if enum_call == call:
+            # No string stub to replace — append an invalid kwarg
+            enum_call = call.rstrip(")") + ', currency="INVALID_VALUE")'
 
         code = f"""def {name}{fixture_str}:
     \"\"\"Quell: {req.description}\"\"\"

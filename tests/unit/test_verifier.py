@@ -1,12 +1,19 @@
 """Unit tests for Verifier (spec3 architecture)."""
 from __future__ import annotations
-import pytest
+
 from pathlib import Path
-from quell.core.verifier import Verifier
+
+import pytest
+
 from quell.core.models import (
-    Requirement, GeneratedTest, VerificationStatus, VerificationResult,
-    ConstraintKind, SpecSource, QuellConfig,
+    ConstraintKind,
+    GeneratedTest,
+    QuellConfig,
+    Requirement,
+    SpecSource,
+    VerificationStatus,
 )
+from quell.core.verifier import Verifier
 
 
 @pytest.fixture

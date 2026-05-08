@@ -18,16 +18,21 @@ Tools exposed:
     get_quell_score      — get current mutation score
 """
 from __future__ import annotations
+
 import asyncio
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mcp.server import Server
 
 
 def main() -> None:
     """Entry point for the quell-mcp CLI command."""
     try:
-        from mcp.server import Server
-        from mcp.server.stdio import stdio_server
+        from mcp.server import Server as _Server  # noqa: F401
+        from mcp.server.stdio import stdio_server as _stdio  # noqa: F401
     except ImportError:
         print(
             "Error: mcp package is required.\n"
@@ -55,9 +60,8 @@ async def _run_server() -> None:
         )
 
 
-def _register_tools(server: "Server") -> None:
+def _register_tools(server: Server) -> None:
     """Register all Quell MCP tools on the server."""
-    from mcp.server import Server
 
     @server.tool()
     async def verify_test(test_code: str, source_file: str) -> dict:
@@ -131,8 +135,8 @@ def _register_tools(server: "Server") -> None:
         from quell.adapters.mutmut_adapter import MutmutAdapter
         from quell.core.analyzer import MutationAnalyzer
         from quell.core.generator import TestGenerator
-        from quell.core.verifier import MutantVerifier
         from quell.core.models import QuellConfig, VerificationStatus
+        from quell.core.verifier import MutantVerifier
         from quell.llm.client import LLMClient
 
         config = QuellConfig()
@@ -170,7 +174,10 @@ def _register_tools(server: "Server") -> None:
             "test_code": generated.test_code,
             "test_function_name": generated.test_function_name,
             "verified": False,
-            "explanation": f"Could not generate a verified killing test after {config.max_verification_attempts} attempts.",
+            "explanation": (
+                f"Could not generate a verified killing test after "
+                f"{config.max_verification_attempts} attempts."
+            ),
         }
 
     @server.tool()

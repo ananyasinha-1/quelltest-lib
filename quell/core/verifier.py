@@ -30,11 +30,21 @@ ABSOLUTE RULES — never violate:
 - NEVER add --skip-verification flag
 """
 from __future__ import annotations
-import subprocess, shutil, time, re
+
+import ast as _ast
+import re
+import shutil
+import subprocess
+import time
 from pathlib import Path
+
 from quell.core.models import (
-    Requirement, GeneratedTest, VerificationResult,
-    VerificationStatus, ConstraintKind, QuellConfig,
+    ConstraintKind,
+    GeneratedTest,
+    QuellConfig,
+    Requirement,
+    VerificationResult,
+    VerificationStatus,
 )
 
 
@@ -185,9 +195,6 @@ class Verifier:
 # Each helper targets ONLY the lines inside the named function, not the whole
 # file. This prevents the verifier from accidentally violating a different
 # function when multiple functions share the same pattern.
-
-import ast as _ast
-
 
 def _func_line_range(src: str, func_name: str) -> tuple[int, int] | None:
     """Return (start_line, end_line) for func_name in src (1-indexed, inclusive)."""

@@ -6,9 +6,11 @@ Conservative: marks as uncovered when uncertain.
 Better to generate a duplicate test than miss a real gap.
 """
 from __future__ import annotations
+
 import ast
 from pathlib import Path
-from quell.core.models import Requirement, ConstraintKind
+
+from quell.core.models import ConstraintKind, Requirement
 
 
 class CoverageChecker:

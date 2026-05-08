@@ -1,6 +1,6 @@
 """Weak tests for calculator — intentionally missing edge cases for demo."""
 import pytest
-from src.calculator import divide, discount, is_adult
+from src.calculator import discount, divide, is_adult
 
 
 def test_divide_normal():

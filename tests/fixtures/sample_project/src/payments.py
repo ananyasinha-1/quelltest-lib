@@ -3,6 +3,7 @@ Sample project for Quell integration tests.
 Rich docstrings + Pydantic model — exercises all readers.
 """
 from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -55,5 +56,5 @@ def apply_discount(price: float, percentage: float) -> float:
     if not 0 <= percentage <= 100:
         raise ValueError(f"Percentage must be 0-100, got {percentage}")
     if price < 0:
-        raise ValueError(f"Price cannot be negative")
+        raise ValueError("Price cannot be negative")
     return price * (1 - percentage / 100)

@@ -8,9 +8,15 @@ Strategy:
 3. Always return a GeneratedTest with test_code as a valid Python function string.
 """
 from __future__ import annotations
+
 import re
+from pathlib import Path
+
 from quell.core.models import (
-    SurvivedMutant, GeneratedTest, MutationOperator, QuellConfig
+    GeneratedTest,
+    MutationOperator,
+    QuellConfig,
+    SurvivedMutant,
 )
 from quell.llm.client import LLMClient
 
@@ -27,6 +33,12 @@ class TestGenerator:
     def __init__(self, llm_client: LLMClient, config: QuellConfig):
         self.llm = llm_client
         self.config = config
+
+    @staticmethod
+    def _test_file(mutant: SurvivedMutant) -> Path:
+        return mutant.test_file_path or (
+            mutant.file_path.parent / "tests" / f"test_{mutant.file_path.stem}.py"
+        )
 
     async def generate(self, mutant: SurvivedMutant) -> GeneratedTest:
         """Main entry point. Routes to rule-based or LLM generator."""
@@ -85,8 +97,11 @@ class TestGenerator:
             mutant_id=mutant.id,
             test_function_name=test_name,
             test_code=test_code,
-            test_file_path=mutant.test_file_path or mutant.file_path.parent / "tests" / f"test_{mutant.file_path.stem}.py",
-            explanation=f"Boundary test at value {boundary_val} exposes the {mutant.original_code.strip()} vs {mutant.mutated_code.strip()} difference",
+            test_file_path=self._test_file(mutant),
+            explanation=(
+                f"Boundary test at value {boundary_val} exposes the "
+                f"{mutant.original_code.strip()} vs {mutant.mutated_code.strip()} difference"
+            ),
             operator=mutant.operator,
             generated_by="rule_based",
         )
@@ -122,7 +137,7 @@ class TestGenerator:
             mutant_id=mutant.id,
             test_function_name=test_name,
             test_code=test_code,
-            test_file_path=mutant.test_file_path or mutant.file_path.parent / "tests" / f"test_{mutant.file_path.stem}.py",
+            test_file_path=self._test_file(mutant),
             explanation="Arithmetic test with non-zero inputs exposes operator difference",
             operator=mutant.operator,
             generated_by="rule_based",
@@ -146,7 +161,7 @@ class TestGenerator:
             mutant_id=mutant.id,
             test_function_name=test_name,
             test_code=test_code,
-            test_file_path=mutant.test_file_path or mutant.file_path.parent / "tests" / f"test_{mutant.file_path.stem}.py",
+            test_file_path=self._test_file(mutant),
             explanation="Comparison flip test with value that makes one branch true and other false",
             operator=mutant.operator,
             generated_by="rule_based",
@@ -170,7 +185,7 @@ class TestGenerator:
             mutant_id=mutant.id,
             test_function_name=test_name,
             test_code=test_code,
-            test_file_path=mutant.test_file_path or mutant.file_path.parent / "tests" / f"test_{mutant.file_path.stem}.py",
+            test_file_path=self._test_file(mutant),
             explanation="Exact value assertion catches constant mutation",
             operator=mutant.operator,
             generated_by="rule_based",
@@ -196,7 +211,7 @@ class TestGenerator:
             mutant_id=mutant.id,
             test_function_name=test_name,
             test_code=test_code,
-            test_file_path=mutant.test_file_path or mutant.file_path.parent / "tests" / f"test_{mutant.file_path.stem}.py",
+            test_file_path=self._test_file(mutant),
             explanation="Return value assertion (not None, exact value) kills return mutation",
             operator=mutant.operator,
             generated_by="rule_based",
@@ -221,7 +236,7 @@ class TestGenerator:
             mutant_id=mutant.id,
             test_function_name=test_name,
             test_code=test_code,
-            test_file_path=mutant.test_file_path or mutant.file_path.parent / "tests" / f"test_{mutant.file_path.stem}.py",
+            test_file_path=self._test_file(mutant),
             explanation="Single-condition-true input exposes and/or operator difference",
             operator=mutant.operator,
             generated_by="rule_based",
@@ -242,7 +257,7 @@ class TestGenerator:
             mutant_id=mutant.id,
             test_function_name=func_name,
             test_code=code,
-            test_file_path=mutant.test_file_path or mutant.file_path.parent / "tests" / f"test_{mutant.file_path.stem}.py",
+            test_file_path=self._test_file(mutant),
             explanation=f"LLM-generated test for {mutant.operator.value} mutation",
             operator=mutant.operator,
             generated_by=f"llm:{self.config.llm_model}",

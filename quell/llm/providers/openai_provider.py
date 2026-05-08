@@ -1,6 +1,7 @@
 from openai import AsyncOpenAI
-from quell.llm.client import LLMClient
+
 from quell.core.models import QuellConfig
+from quell.llm.client import LLMClient
 
 
 class OpenAIProvider(LLMClient):

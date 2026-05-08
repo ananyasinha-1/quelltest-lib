@@ -5,20 +5,20 @@ Tests the full pipeline:
   spec readers → Requirements → coverage checker → rule engine → verifier → writer
 """
 from __future__ import annotations
-import pytest
+
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-from quell.spec.docstring_reader import DocstringReader
-from quell.spec.type_reader import TypeReader
-from quell.coverage.checker import CoverageChecker
-from quell.synthesis.rule_engine import RuleEngine
+import pytest
+
+from quell.core.models import ConstraintKind, QuellConfig
 from quell.core.verifier import Verifier
 from quell.core.writer import Writer
-from quell.core.models import (
-    QuellConfig, VerificationStatus, ConstraintKind
-)
+from quell.coverage.checker import CoverageChecker
 from quell.llm.client import LLMClient
+from quell.spec.docstring_reader import DocstringReader
+from quell.spec.type_reader import TypeReader
+from quell.synthesis.rule_engine import RuleEngine
 
 
 @pytest.fixture
@@ -123,7 +123,6 @@ class TestWriterIntegration:
     def test_writer_creates_and_injects(
         self, e2e_config: QuellConfig, tmp_path: Path, sample_generated_test: object
     ) -> None:
-        from quell.core.models import GeneratedTest
         test_file = tmp_path / "test_output.py"
         test = sample_generated_test.model_copy(update={"test_file_path": test_file})  # type: ignore[union-attr]
         writer = Writer(e2e_config)

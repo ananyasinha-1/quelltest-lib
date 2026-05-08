@@ -118,7 +118,7 @@ async def _handle_pr_event(payload: dict) -> None:
         )
 
         # Run quell ci --diff-only --report json
-        result = subprocess.run(
+        subprocess.run(
             ["quell", "ci", "--diff-only", "--report", "json"],
             cwd=work_dir,
             capture_output=True,
@@ -135,8 +135,8 @@ async def _handle_pr_event(payload: dict) -> None:
     # Build and post the PR comment
     # We use a simplified comment when running from the App
     # (no full ProjectScore object available without re-calculating)
-    from quell.ci.threshold import ThresholdResult
     from quell.ci.reporter import CIReport
+    from quell.ci.threshold import ThresholdResult
     from quell.score.calculator import ProjectScore
 
     threshold_result = ThresholdResult(

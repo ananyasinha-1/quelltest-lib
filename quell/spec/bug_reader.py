@@ -16,9 +16,13 @@ Verification engine then:
 This is the ONLY tool that automates the full TDD bug-fixing loop.
 """
 from __future__ import annotations
-import ast, json, uuid
+
+import ast
+import json
+import uuid
 from pathlib import Path
-from quell.core.models import Requirement, ConstraintKind, SpecSource
+
+from quell.core.models import ConstraintKind, Requirement, SpecSource
 
 
 class BugReader:
@@ -73,7 +77,7 @@ Bug: "{description}"
   "expected_behavior": "what should happen instead"}}"""
         try:
             response = await self.llm.generate(prompt)  # type: ignore[attr-defined]
-            return json.loads(response)
+            return json.loads(response)  # type: ignore[no-any-return]
         except Exception:
             return {}
 

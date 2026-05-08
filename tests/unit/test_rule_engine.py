@@ -1,9 +1,10 @@
 """Unit tests for RuleEngine."""
 from __future__ import annotations
-import pytest
+
 from pathlib import Path
+
+from quell.core.models import ConstraintKind, Requirement, SpecSource
 from quell.synthesis.rule_engine import RuleEngine
-from quell.core.models import Requirement, ConstraintKind, SpecSource
 
 
 def _req(kind: ConstraintKind, path: Path) -> Requirement:

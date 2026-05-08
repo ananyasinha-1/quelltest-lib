@@ -5,8 +5,9 @@ No LLM required. Pure static analysis.
 Used by the rule engine to build real callable tests instead of TODO scaffolds.
 """
 from __future__ import annotations
+
 import ast
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -116,12 +117,12 @@ def inspect(func_name: str, source_file: Path) -> FuncSignature | None:
                 return _extract(node, class_name=None)
 
     # Class methods
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            for item in node.body:
+    for cls_node in ast.walk(tree):
+        if isinstance(cls_node, ast.ClassDef):
+            for item in cls_node.body:
                 if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     if item.name == func_name:
-                        return _extract(item, class_name=node.name)
+                        return _extract(item, class_name=cls_node.name)
 
     return None
 

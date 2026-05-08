@@ -4,11 +4,11 @@ Analyzes a SurvivedMutant to:
 2. Extract context (enclosing function, existing tests, type hints)
 """
 from __future__ import annotations
-import ast
-import libcst as cst
-from pathlib import Path
-from quell.core.models import SurvivedMutant, MutationOperator
 
+import ast
+from pathlib import Path
+
+from quell.core.models import MutationOperator, SurvivedMutant
 
 # Operator classification rules based on diff between original and mutated code
 BOUNDARY_OPS = {">", ">=", "<", "<="}

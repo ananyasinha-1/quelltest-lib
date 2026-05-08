@@ -1,10 +1,13 @@
 """Unit tests for Writer (spec3 architecture)."""
 from __future__ import annotations
+
 import json
-import pytest
 from pathlib import Path
-from quell.core.writer import Writer
+
+import pytest
+
 from quell.core.models import GeneratedTest, QuellConfig
+from quell.core.writer import Writer
 
 
 @pytest.fixture

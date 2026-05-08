@@ -7,6 +7,7 @@ Supported formats:
   github    — GitHub Actions annotations (::notice/::warning/::error)
 """
 from __future__ import annotations
+
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,8 +30,8 @@ class CIReport:
 def report_console(report: CIReport, project_score: ProjectScore) -> None:
     """Print a Rich-formatted CI summary to stdout."""
     from rich.console import Console
-    from rich.table import Table
     from rich.panel import Panel
+    from rich.table import Table
 
     console = Console()
     status_icon = "✓" if report.passed else "✗"

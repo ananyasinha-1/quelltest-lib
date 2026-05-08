@@ -1,9 +1,5 @@
 """Tests for quell/score/badge.py"""
 import re
-import tempfile
-from pathlib import Path
-
-import pytest
 
 from quell.score.badge import generate_badge, write_badge
 

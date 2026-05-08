@@ -9,8 +9,10 @@ proves it works before it's accepted. LLM hallucinations are caught
 by verification — not a blocker, just a retry trigger.
 """
 from __future__ import annotations
+
 import re
-from quell.core.models import Requirement, GeneratedTest, QuellConfig
+
+from quell.core.models import GeneratedTest, QuellConfig, Requirement
 from quell.llm.client import LLMClient
 from quell.llm.prompts import build_prompt
 

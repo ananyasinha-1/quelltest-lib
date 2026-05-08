@@ -1,9 +1,16 @@
 """Shared pytest fixtures for Quell tests."""
 from __future__ import annotations
-import pytest
+
 from pathlib import Path
+
+import pytest
+
 from quell.core.models import (
-    Requirement, ConstraintKind, SpecSource, QuellConfig, GeneratedTest
+    ConstraintKind,
+    GeneratedTest,
+    QuellConfig,
+    Requirement,
+    SpecSource,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"

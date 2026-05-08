@@ -5,10 +5,12 @@ Stryker produces a standardized JSON report with the mutation-testing-report-sch
 Run `stryker run --reporters=json` to generate mutation-report.json.
 """
 from __future__ import annotations
+
 import json
 from pathlib import Path
-from quell.core.models import SurvivedMutant, MutantSource
+
 from quell.adapters.base import MutationAdapter
+from quell.core.models import MutantSource, SurvivedMutant
 
 
 class StrykerAdapter(MutationAdapter):

@@ -11,12 +11,14 @@ mutmut 3.x notes:
   - Does NOT run on Windows without WSL
 """
 from __future__ import annotations
+
+import re
 import sqlite3
 import subprocess
-import re
 from pathlib import Path
-from quell.core.models import SurvivedMutant, MutantSource
+
 from quell.adapters.base import MutationAdapter
+from quell.core.models import MutantSource, SurvivedMutant
 
 
 class MutmutAdapter(MutationAdapter):
@@ -38,8 +40,8 @@ class MutmutAdapter(MutationAdapter):
     def read_survivors(self) -> list[SurvivedMutant]:
         """Parse mutmut results and return all survived mutants."""
         if not self._db_path.exists():
-            from rich.panel import Panel
             from rich.console import Console
+            from rich.panel import Panel
             Console().print(Panel(
                 "[red]Error:[/red] No mutation testing results found.\n\n"
                 "Quell needs mutation testing results to work.\n"

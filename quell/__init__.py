@@ -10,12 +10,18 @@ Quick start:
 __version__ = "0.4.4"
 __author__ = "Shashank Bindal"
 
-from quell.sdk import Quell, CheckResult
 from quell.core.models import (
-    Requirement, ConstraintKind, SpecSource,
-    GeneratedTest, VerificationResult, VerificationStatus,
-    QuellConfig, ProjectScore, FileScore,
+    ConstraintKind,
+    FileScore,
+    GeneratedTest,
+    ProjectScore,
+    QuellConfig,
+    Requirement,
+    SpecSource,
+    VerificationResult,
+    VerificationStatus,
 )
+from quell.sdk import CheckResult, Quell
 
 __all__ = [
     "Quell", "CheckResult",

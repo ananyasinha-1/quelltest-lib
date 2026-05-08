@@ -10,16 +10,16 @@ Commands:
   quell init        Add [tool.quell] to pyproject.toml
 """
 from __future__ import annotations
-import asyncio
+
 from pathlib import Path
-from typing import Optional
+
 import typer
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 
-from quell.core.models import QuellConfig, VerificationStatus
 from quell import __version__
+from quell.core.models import QuellConfig
 
 app = typer.Typer(
     name="quell",
@@ -65,7 +65,7 @@ def _load_config(project_root: Path) -> QuellConfig:
 def cmd_check(
     target: str = typer.Argument(".", help="File or directory to check"),
     fix: bool = typer.Option(False, "--fix", help="Generate and write verified tests"),
-    sources: Optional[str] = typer.Option(
+    sources: str | None = typer.Option(
         None, "--sources", help="Comma-separated: docstring,type,mutation"
     ),
     project_root: Path = typer.Option(Path("."), "--root", help="Project root"),
@@ -116,7 +116,7 @@ def cmd_check(
 @app.command("reproduce")
 def cmd_reproduce(
     description: str = typer.Argument(..., help="Bug description in plain English"),
-    file: Optional[str] = typer.Option(None, "--file", help="Target source file"),
+    file: str | None = typer.Option(None, "--file", help="Target source file"),
     project_root: Path = typer.Option(Path("."), "--root"),
 ) -> None:
     """Convert a bug description into a verified failing test."""
@@ -141,7 +141,7 @@ def cmd_reproduce(
 @app.command("prove")
 def cmd_prove(
     file: str = typer.Argument(..., help="Source file to prove"),
-    function: Optional[str] = typer.Option(None, "--function", help="Specific function"),
+    function: str | None = typer.Option(None, "--function", help="Specific function"),
     project_root: Path = typer.Option(Path("."), "--root"),
 ) -> None:
     """Show requirement coverage score for a file or function."""
@@ -168,8 +168,8 @@ def cmd_score(
     project_root: Path = typer.Option(Path("."), "--root"),
 ) -> None:
     """Show project-wide Quell Score."""
-    from quell.sdk import Quell
     from quell.score.badge import write_badge
+    from quell.sdk import Quell
 
     q = Quell(project_root=project_root)
 

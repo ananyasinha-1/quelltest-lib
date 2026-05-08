@@ -1,7 +1,8 @@
 """Local LLM — zero API key, privacy-first. Works offline."""
 import httpx
-from quell.llm.client import LLMClient
+
 from quell.core.models import QuellConfig
+from quell.llm.client import LLMClient
 
 
 class OllamaProvider(LLMClient):

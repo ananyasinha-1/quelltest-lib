@@ -13,9 +13,13 @@ Key extractions:
   "Returns: Transaction with status"    → MUST_RETURN requirement
 """
 from __future__ import annotations
-import ast, re, uuid
+
+import ast
+import re
+import uuid
 from pathlib import Path
-from quell.core.models import Requirement, ConstraintKind, SpecSource
+
+from quell.core.models import ConstraintKind, Requirement, SpecSource
 
 
 class DocstringReader:
@@ -30,7 +34,7 @@ class DocstringReader:
     Returns [] on any error — never raises.
     """
 
-    def __init__(self, llm_client=None):
+    def __init__(self, llm_client: object = None) -> None:
         self.llm = llm_client
 
     def read(self, file_path: Path) -> list[Requirement]:

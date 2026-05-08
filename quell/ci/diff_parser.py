@@ -8,6 +8,7 @@ This makes Quell viable in every PR pipeline: instead of mutating the full
 project (15-30 min), we only mutate changed lines (2-3 min).
 """
 from __future__ import annotations
+
 import re
 import subprocess
 from dataclasses import dataclass, field

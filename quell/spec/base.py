@@ -1,7 +1,9 @@
 """Base protocol for all spec readers."""
 from __future__ import annotations
+
 from pathlib import Path
 from typing import Protocol
+
 from quell.core.models import Requirement
 
 

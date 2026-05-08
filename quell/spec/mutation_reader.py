@@ -16,9 +16,13 @@ mutmut 3.x IMPORTANT NOTES:
 Stryker: stable JSON schema, safe to parse directly.
 """
 from __future__ import annotations
-import sqlite3, json, uuid
+
+import json
+import sqlite3
+import uuid
 from pathlib import Path
-from quell.core.models import Requirement, ConstraintKind, SpecSource
+
+from quell.core.models import ConstraintKind, Requirement, SpecSource
 
 
 class MutmutReader:

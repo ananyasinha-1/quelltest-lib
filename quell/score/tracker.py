@@ -5,8 +5,9 @@ Each entry is a snapshot of ProjectScore at a point in time.
 Used by `quell score --compare` to show deltas between branches/runs.
 """
 from __future__ import annotations
+
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from quell.score.calculator import ProjectScore
@@ -28,7 +29,7 @@ def record_score(
     history_path.parent.mkdir(parents=True, exist_ok=True)
 
     entry = {
-        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+        "timestamp": datetime.now(tz=UTC).isoformat(),
         "label": label,
         "total_score": score.total_score,
         "percentage": score.percentage,

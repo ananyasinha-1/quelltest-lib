@@ -1,9 +1,10 @@
 """Unit tests for DocstringReader."""
 from __future__ import annotations
-import pytest
+
 from pathlib import Path
-from quell.spec.docstring_reader import DocstringReader
+
 from quell.core.models import ConstraintKind, SpecSource
+from quell.spec.docstring_reader import DocstringReader
 
 
 def test_reads_must_raise(sample_payments_path: Path) -> None:

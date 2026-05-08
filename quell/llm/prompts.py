@@ -4,7 +4,8 @@ from quell.core.models import Requirement
 
 def build_prompt(req: Requirement) -> str:
     """Build a structured prompt for LLM test generation."""
-    return f"""You are an expert Python test engineer. Write a pytest test function that PROVES a specific requirement holds.
+    return f"""You are an expert Python test engineer. \
+Write a pytest test function that PROVES a specific requirement holds.
 
 REQUIREMENT:
   Description: {req.description}

@@ -1,5 +1,11 @@
 """Progress bars and spinners for Quell UI."""
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+)
 
 
 def make_progress() -> Progress:

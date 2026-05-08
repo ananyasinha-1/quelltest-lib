@@ -6,6 +6,7 @@ Exit codes:
     1 = score is below threshold
 """
 from __future__ import annotations
+
 from dataclasses import dataclass
 
 from quell.score.calculator import ProjectScore

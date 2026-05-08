@@ -1,6 +1,8 @@
 """Abstract LLM client + factory."""
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
+
 from quell.core.models import QuellConfig
 
 
@@ -13,11 +15,11 @@ class LLMClient(ABC):
         ...
 
     @classmethod
-    def from_config(cls, config: QuellConfig) -> "LLMClient":
+    def from_config(cls, config: QuellConfig) -> LLMClient:
         """Factory: create provider from config."""
         from quell.llm.providers.anthropic_provider import AnthropicProvider
-        from quell.llm.providers.openai_provider import OpenAIProvider
         from quell.llm.providers.ollama_provider import OllamaProvider
+        from quell.llm.providers.openai_provider import OpenAIProvider
         return {
             "anthropic": AnthropicProvider,
             "openai": OpenAIProvider,

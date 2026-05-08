@@ -10,12 +10,17 @@ q.prove("src/payments.py")          # coverage score
 q.score()                           # project score
 """
 from __future__ import annotations
+
 import asyncio
 import datetime
 from dataclasses import dataclass
 from pathlib import Path
+
 from quell.core.models import (
-    Requirement, ProjectScore, QuellConfig, VerificationStatus,
+    ProjectScore,
+    QuellConfig,
+    Requirement,
+    VerificationStatus,
 )
 
 
@@ -86,10 +91,10 @@ class Quell:
     async def _check(
         self, target: Path, sources: list[str], fix: bool
     ) -> CheckResult:
-        from quell.spec.docstring_reader import DocstringReader
-        from quell.spec.type_reader import TypeReader
         from quell.coverage.checker import CoverageChecker
         from quell.llm.client import LLMClient
+        from quell.spec.docstring_reader import DocstringReader
+        from quell.spec.type_reader import TypeReader
 
         llm = LLMClient.from_config(self.config)
 
@@ -130,14 +135,16 @@ class Quell:
         """Run rule engine → verifier → writer for each uncovered requirement.
         Returns the path to the written diagnostic report.
         """
-        from quell.synthesis.rule_engine import RuleEngine
+        import quell
         from quell.core.verifier import Verifier
         from quell.core.writer import Writer
         from quell.report.generator import (
-            QuellReport, RequirementOutcome,
-            outcome_from_verification, write_report,
+            QuellReport,
+            RequirementOutcome,
+            outcome_from_verification,
+            write_report,
         )
-        import quell
+        from quell.synthesis.rule_engine import RuleEngine
 
         engine = RuleEngine()
         verifier = Verifier(self.config, project_root=self.root)
@@ -210,11 +217,11 @@ class Quell:
     async def _reproduce(
         self, description: str, target_file: Path | None
     ) -> bool:
-        from quell.spec.bug_reader import BugReader
-        from quell.synthesis.llm_engine import LLMSynthesizer
         from quell.core.verifier import Verifier
         from quell.core.writer import Writer
         from quell.llm.client import LLMClient
+        from quell.spec.bug_reader import BugReader
+        from quell.synthesis.llm_engine import LLMSynthesizer
 
         llm = LLMClient.from_config(self.config)
         reqs = BugReader(llm, self.root).read_from_description(

@@ -20,9 +20,9 @@ What is NOT recorded:
   - Any data that could identify proprietary business logic
 """
 from __future__ import annotations
+
 import json
-import datetime
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from quell.core.models import VerificationStatus
@@ -127,7 +127,7 @@ def outcome_from_verification(
     # Truncate error to first 120 chars — no source code leaks
     snippet = None
     if error_message:
-        lines = [l for l in error_message.splitlines() if l.strip()]
+        lines = [ln for ln in error_message.splitlines() if ln.strip()]
         snippet = lines[0][:120] if lines else error_message[:120]
 
     return RequirementOutcome(

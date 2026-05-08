@@ -1,20 +1,22 @@
 """All domain models. Every pipeline stage uses these."""
 from __future__ import annotations
-from enum import Enum
-from pathlib import Path
-from typing import Optional, Any
-from pydantic import BaseModel, Field
+
 import datetime
+from enum import StrEnum
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 
-class SpecSource(str, Enum):
+class SpecSource(StrEnum):
     DOCSTRING  = "docstring"
     TYPE       = "type"
     BUG_REPORT = "bug_report"
     MUTATION   = "mutation"
 
 
-class ConstraintKind(str, Enum):
+class ConstraintKind(StrEnum):
     """The kind of requirement extracted from any spec."""
     MUST_RAISE   = "must_raise"    # raises ExceptionType under condition
     MUST_RETURN  = "must_return"   # returns specific value/type
@@ -45,9 +47,9 @@ class Requirement(BaseModel):
     source: SpecSource
     target_function: str
     target_file: Path
-    violation_input: Optional[dict[str, Any]] = None
-    expected_behavior: Optional[str] = None
-    raw_spec_text: Optional[str] = None
+    violation_input: dict[str, Any] | None = None
+    expected_behavior: str | None = None
+    raw_spec_text: str | None = None
     is_covered: bool = False
     covering_tests: list[str] = Field(default_factory=list)
 
@@ -63,7 +65,7 @@ class GeneratedTest(BaseModel):
     unknown_types: list[str] = Field(default_factory=list)  # types rule engine couldn't stub
 
 
-class VerificationStatus(str, Enum):
+class VerificationStatus(StrEnum):
     VERIFIED               = "verified"
     FAILS_ON_CORRECT       = "fails_on_correct"
     DOESNT_CATCH_VIOLATION = "doesnt_catch_violation"
@@ -77,7 +79,7 @@ class VerificationResult(BaseModel):
     generated_test: GeneratedTest
     status: VerificationStatus
     attempts: int = 1
-    error_message: Optional[str] = None
+    error_message: str | None = None
     duration_ms: int = 0
 
 
@@ -93,9 +95,12 @@ class FileScore(BaseModel):
 
     @property
     def grade(self) -> str:
-        if self.quell_score >= 0.80: return "A"
-        if self.quell_score >= 0.60: return "B"
-        if self.quell_score >= 0.40: return "C"
+        if self.quell_score >= 0.80:
+            return "A"
+        if self.quell_score >= 0.60:
+            return "B"
+        if self.quell_score >= 0.40:
+            return "C"
         return "F"
 
 
@@ -108,7 +113,8 @@ class ProjectScore(BaseModel):
     @property
     def total_score(self) -> float:
         total = sum(f.total_requirements for f in self.files)
-        if total == 0: return 0.0
+        if total == 0:
+            return 0.0
         return sum(f.covered_requirements for f in self.files) / total
 
     @property
@@ -122,9 +128,9 @@ class AuditEntry(BaseModel):
     )
     requirement_id: str
     action: str
-    file_path: Optional[Path] = None
-    test_function_name: Optional[str] = None
-    verification_status: Optional[VerificationStatus] = None
+    file_path: Path | None = None
+    test_function_name: str | None = None
+    verification_status: VerificationStatus | None = None
 
 
 class QuellConfig(BaseModel):

@@ -1,9 +1,10 @@
 """Unit tests for TypeReader."""
 from __future__ import annotations
-import pytest
+
 from pathlib import Path
-from quell.spec.type_reader import TypeReader
+
 from quell.core.models import ConstraintKind, SpecSource
+from quell.spec.type_reader import TypeReader
 
 
 def test_reads_literal_enum(sample_payments_path: Path) -> None:

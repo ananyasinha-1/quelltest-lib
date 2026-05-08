@@ -16,9 +16,12 @@ Why this matters vs Qodo/Copilot:
   If your code has a bug (missing validation), we still generate the right test.
 """
 from __future__ import annotations
-import ast, uuid
+
+import ast
+import uuid
 from pathlib import Path
-from quell.core.models import Requirement, ConstraintKind, SpecSource
+
+from quell.core.models import ConstraintKind, Requirement, SpecSource
 
 FIELD_VALIDATORS = {
     "gt", "ge", "lt", "le",
@@ -41,7 +44,7 @@ class TypeReader:
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and self._is_pydantic(node):
                 reqs.extend(self._from_model(node, file_path))
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if isinstance(node, ast.FunctionDef):
                 reqs.extend(self._from_function(node, file_path))
         return reqs
 
@@ -61,7 +64,7 @@ class TypeReader:
             name = self._name(stmt.target)
             # Literal type → ENUM_VALID
             if self._is_literal(stmt.annotation):
-                values = self._literal_values(stmt.annotation)
+                values = self._literal_values(stmt.annotation)  # type: ignore[arg-type]
                 if values:
                     reqs.append(Requirement(
                         id=str(uuid.uuid4())[:8],
@@ -98,7 +101,7 @@ class TypeReader:
         reqs: list[Requirement] = []
         for arg in func.args.args:
             if arg.annotation and self._is_literal(arg.annotation):
-                values = self._literal_values(arg.annotation)
+                values = self._literal_values(arg.annotation)  # type: ignore[arg-type]
                 if values:
                     reqs.append(Requirement(
                         id=str(uuid.uuid4())[:8],
@@ -132,7 +135,7 @@ class TypeReader:
         return []
 
     def _name(self, node: ast.expr) -> str:
-        return node.id if isinstance(node, ast.Name) else "field"  # type: ignore[attr-defined]
+        return node.id if isinstance(node, ast.Name) else "field"
 
     @property
     def source_name(self) -> str:

@@ -7,11 +7,13 @@ Stronger than coverage% because it measures whether your tests
 prove the code meets its specification, not just that lines ran.
 """
 from __future__ import annotations
+
 from pathlib import Path
-from quell.core.models import ProjectScore, FileScore
+
+from quell.core.models import FileScore, ProjectScore
+from quell.coverage.checker import CoverageChecker
 from quell.spec.docstring_reader import DocstringReader
 from quell.spec.type_reader import TypeReader
-from quell.coverage.checker import CoverageChecker
 
 
 def calculate_score(project_root: Path = Path(".")) -> ProjectScore:

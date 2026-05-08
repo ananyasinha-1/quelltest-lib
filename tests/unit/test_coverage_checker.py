@@ -1,9 +1,10 @@
 """Unit tests for CoverageChecker."""
 from __future__ import annotations
-import pytest
+
 from pathlib import Path
+
+from quell.core.models import ConstraintKind, Requirement, SpecSource
 from quell.coverage.checker import CoverageChecker
-from quell.core.models import Requirement, ConstraintKind, SpecSource
 
 
 def test_marks_uncovered_when_no_test_file(
