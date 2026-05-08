@@ -1199,8 +1199,8 @@ wheels = [
 ]
 
 [[package]]
-name = "quell"
-version = "0.1.0"
+name = "quelltest"
+version = "0.4.3"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },

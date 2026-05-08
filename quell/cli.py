@@ -19,6 +19,7 @@ from rich.table import Table
 from rich.panel import Panel
 
 from quell.core.models import QuellConfig, VerificationStatus
+from quell import __version__
 
 app = typer.Typer(
     name="quell",
@@ -26,6 +27,24 @@ app = typer.Typer(
     rich_markup_mode="rich",
 )
 console = Console()
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"quelltest {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version: bool = typer.Option(
+        None, "--version", "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show version and exit.",
+    ),
+) -> None:
+    pass
 
 
 def _load_config(project_root: Path) -> QuellConfig:
