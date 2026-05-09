@@ -2,22 +2,24 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, develop]
   pull_request:
     branches: [main, master]
 
 jobs:
   test:
+    name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.11", "3.12"]
+      fail-fast: false
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v2
+        uses: astral-sh/setup-uv@v4
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
@@ -26,14 +28,63 @@ jobs:
         run: uv sync --all-extras --dev
 
       - name: Lint
-        run: uv run ruff check .
+        run: uv run ruff check quell/ --output-format=github
 
       - name: Type check
         run: uv run mypy quell/
 
       - name: Test
-        run: uv run pytest tests/ -v --cov=quell --cov-report=xml
+        run: uv run pytest tests/ -v --tb=short --cov=quell --cov-report=xml
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         if: matrix.python-version == '3.11'
+        with:
+          file: coverage.xml
+          fail_ci_if_error: false
+
+  quell-self-check:
+    name: Quell self-check (rule-based)
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install Quell
+        run: uv sync
+
+      - name: Run Quell on itself
+        run: |
+          uv run quell check quell/ --no-llm --format json > quell_self_report.json || true
+
+      - name: Show Quell self-report
+        run: |
+          python3 -c "
+          import json, sys
+          try:
+            r = json.load(open('quell_self_report.json'))
+            print(f'Total requirements: {r[\"total_requirements\"]}')
+            print(f'Gaps: {len(r[\"gaps\"])}')
+            print(f'Score: {int(r[\"score\"]*100)}%')
+          except Exception as e:
+            print(f'Could not parse report: {e}')
+          "
+
+      - name: Upload self-report
+        uses: actions/upload-artifact@v4
+        with:
+          name: quell-self-report
+          path: quell_self_report.json
+
+  release-check:
+    name: Check package builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv build
+      - run: uv run twine check dist/*

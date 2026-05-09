@@ -14,6 +14,7 @@ class SpecSource(StrEnum):
     TYPE       = "type"
     BUG_REPORT = "bug_report"
     MUTATION   = "mutation"
+    PYSPARK    = "pyspark"
 
 
 class ConstraintKind(StrEnum):
@@ -24,6 +25,8 @@ class ConstraintKind(StrEnum):
     ENUM_VALID   = "enum_valid"    # value must be one of [X, Y, Z]
     ENUM_INVALID = "enum_invalid"  # invalid value must be rejected
     NOT_NONE     = "not_none"      # return must not be None
+    NOT_NULL     = "not_null"      # PySpark column must not be null
+    TYPE_CHECK   = "type_check"    # PySpark column must match declared type
     MUTATION     = "mutation"      # survived mutant
     BUG_REPRO    = "bug_repro"     # reproduce reported bug
     CUSTOM       = "custom"        # LLM handles free-form
@@ -145,5 +148,6 @@ class QuellConfig(BaseModel):
     enable_docstring: bool = True
     enable_types: bool = True
     enable_mutations: bool = False  # off by default — mutmut not required
+    enable_pyspark: bool = False    # off by default — pyspark optional dep
     score_threshold: float = 0.0
     diff_only: bool = False

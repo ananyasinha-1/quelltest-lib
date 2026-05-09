@@ -115,6 +115,9 @@ class Quell:
                 reqs.extend(DocstringReader(llm).read(f))
             if "type" in sources:
                 reqs.extend(TypeReader().read(f))
+            if self.config.enable_pyspark:
+                from quell.spec.pyspark_reader import PySparkReader
+                reqs.extend(PySparkReader().read(f))
 
         reqs = CoverageChecker(self.root).check(reqs)
 
