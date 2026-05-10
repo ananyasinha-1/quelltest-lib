@@ -379,14 +379,28 @@ class CodeGuardReader:
         return None
 
     def _extract_boundary_input(self, test: ast.expr) -> dict[str, Any] | None:
-        if isinstance(test, ast.Compare):
-            if isinstance(test.left, ast.Name) and test.comparators:
-                comparator = test.comparators[0]
-                if isinstance(comparator, ast.Constant):
-                    return {
-                        "variable": test.left.id,
-                        "boundary_value": comparator.value,
-                    }
+        if not isinstance(test, ast.Compare) or not test.comparators:
+            return None
+        left = test.left
+        comparator = test.comparators[0]
+        if not isinstance(comparator, ast.Constant):
+            return None
+        # Direct: if x < 6
+        if isinstance(left, ast.Name):
+            return {"variable": left.id, "boundary_value": comparator.value}
+        # len(x) < 6  — inject short string, not a number
+        if (
+            isinstance(left, ast.Call)
+            and isinstance(left.func, ast.Name)
+            and left.func.id == "len"
+            and left.args
+            and isinstance(left.args[0], ast.Name)
+        ):
+            return {
+                "variable": left.args[0].id,
+                "boundary_value": comparator.value,
+                "len_check": True,
+            }
         return None
 
     def _extract_enum_input(self, test: ast.expr) -> dict[str, Any] | None:

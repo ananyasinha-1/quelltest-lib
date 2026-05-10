@@ -301,6 +301,20 @@ def cmd_scan(
             f"\n[yellow]Run [bold]quell scan {target} --fix[/bold] "
             "to generate failing tests.[/yellow]"
         )
+        # Still write detection-only report
+        detection_items = [
+            {
+                "function": r.target_function,
+                "file": str(r.target_file),
+                "guard": r.raw_spec_text or r.description,
+                "type": r.constraint_kind.value,
+                "outcome": "detected_not_fixed",
+                "reason": "",
+                "generated_test": None,
+            }
+            for r in gaps
+        ]
+        _write_scan_report(project_root, str(target), all_requirements, gaps, detection_items, 0)
         return
 
     # Generate tests + optional fix suggestions
@@ -327,6 +341,9 @@ def cmd_scan(
     writer = Writer(config)
     fixed = 0
 
+    # Report tracking — written to quell-report.json at the end
+    report_items: list[dict] = []
+
     for i, req in enumerate(gaps, 1):
         console.print(
             f"\n[{i}/{len(gaps)}] [cyan]{req.target_function}()[/cyan]"
@@ -334,36 +351,60 @@ def cmd_scan(
         )
         console.print(f"  Guard: [dim]{req.raw_spec_text}[/dim]")
 
+        item: dict = {
+            "function": req.target_function,
+            "file": str(req.target_file),
+            "guard": req.raw_spec_text or req.description,
+            "type": req.constraint_kind.value,
+            "outcome": "skipped_no_rule",
+            "reason": "",
+            "generated_test": None,
+        }
+
         if rule_engine.can_handle(req):
             candidate = rule_engine.generate(req)
             generated_by_tag = "[dim][rule-based, no network][/dim]"
+            if candidate is None:
+                item["outcome"] = "skipped_self_attr"
+                item["reason"] = "guard checks self.attr — needs class instantiation, skip"
+                console.print(f"  [dim]Skipped — {item['reason']}[/dim]")
+                report_items.append(item)
+                continue
         elif synthesizer:
             # LLM call — run in isolated thread to avoid event loop conflicts
             candidate = _run_coro(synthesizer.synthesize(req))
             generated_by_tag = "[dim][llm][/dim]"
         else:
+            item["reason"] = f"no rule for {req.constraint_kind.value} — pass --llm"
             console.print(
                 f"  [dim]Skipped ({req.constraint_kind.value}) — "
                 "no rule for this guard type. Pass --llm to use LLM.[/dim]"
             )
+            report_items.append(item)
             continue
 
         if not candidate:
+            item["outcome"] = "skipped_no_gen"
+            item["reason"] = "synthesizer returned no test"
+            report_items.append(item)
             continue
+
+        item["generated_test"] = candidate.test_code
 
         with console.status("Verifying test fails on current code (proving gap)..."):
             result = verifier.verify(req, candidate)
 
         if result.status == VerificationStatus.VERIFIED:
+            item["outcome"] = "verified"
             console.print(
                 f"  [green]Gap proven[/green] — test fails on current code "
                 f"{generated_by_tag}"
             )
             console.print(Syntax(candidate.test_code, "python", theme="monokai"))
 
-            if suggest and llm and not no_llm:
+            if suggest and use_llm:
                 from quell.fix.suggester import FixSuggester
-                suggester_obj = FixSuggester(llm, config)
+                suggester_obj = FixSuggester(llm_client, config)
                 with console.status("Generating fix suggestion..."):
                     fix_suggestion = _run_coro(suggester_obj.suggest(req, candidate))
 
@@ -400,14 +441,79 @@ def cmd_scan(
                     fixed += 1
 
         elif result.status == VerificationStatus.DOESNT_CATCH_VIOLATION:
+            item["outcome"] = "rejected_no_catch"
+            item["reason"] = "test passes even when the guard is violated"
             console.print(
                 "  [yellow]Test generated but doesn't catch the gap — needs manual review[/yellow]"
             )
         elif result.status == VerificationStatus.FAILS_ON_CORRECT:
-            console.print(
-                "  [red]Test breaks valid code — rejected "
-                "(function uses complex arg types; try without --no-llm)[/red]"
+            item["outcome"] = "rejected_fails_on_correct"
+            item["reason"] = (
+                "generated stub args trigger a different error on valid code — "
+                "function likely has complex/Pydantic args or depends on self state"
             )
+            console.print(
+                f"  [red]Rejected — generated stub breaks valid code[/red] "
+                f"[dim](guard: {(req.raw_spec_text or '')[:50]!r})[/dim]"
+            )
+            console.print(
+                "  [dim]Likely cause: function has Pydantic/complex args or checks self state. "
+                "This is a known Quell limitation — tracked in report.[/dim]"
+            )
+
+        report_items.append(item)
+
+    # Always write report
+    _write_scan_report(project_root, str(target), all_requirements, gaps, report_items, fixed)
+
+
+def _write_scan_report(
+    project_root: Path,
+    target: str,
+    all_requirements: list,
+    gaps: list,
+    items: list[dict],
+    written: int,
+) -> None:
+    """Write quell-report.json to project_root. Always called at end of scan."""
+    import datetime
+    import json
+
+    from quell import __version__
+
+    outcomes = [it["outcome"] for it in items]
+    summary = {
+        "total_requirements": len(all_requirements),
+        "gaps_found": len(gaps),
+        "verified_and_written": written,
+        "rejected_fails_on_correct": outcomes.count("rejected_fails_on_correct"),
+        "rejected_no_catch": outcomes.count("rejected_no_catch"),
+        "skipped_no_rule": outcomes.count("skipped_no_rule"),
+        "skipped_self_attr": outcomes.count("skipped_self_attr"),
+        "skipped_no_gen": outcomes.count("skipped_no_gen"),
+    }
+    report = {
+        "quell_version": __version__,
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+        "target": target,
+        "summary": summary,
+        "results": items,
+    }
+    report_path = project_root / "quell-report.json"
+    report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+    console.print(f"\n[dim]Report written → {report_path}[/dim]")
+    console.print(
+        f"  verified={summary['verified_and_written']}  "
+        f"rejected_stub_mismatch={summary['rejected_fails_on_correct']}  "
+        f"skipped_self_attr={summary['skipped_self_attr']}  "
+        f"skipped_no_rule={summary['skipped_no_rule']}"
+    )
+    if summary["rejected_fails_on_correct"] > 0:
+        console.print(
+            "  [dim]Tip: share quell-report.json with the Quell maintainer "
+            "so these complex function patterns can be supported.[/dim]"
+        )
 
 
 @app.command("check")

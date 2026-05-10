@@ -158,8 +158,11 @@ class RuleEngine:
         setup = self._setup_lines(fixtures)
         name = self._name(req)
 
-        # Replace the first numeric arg stub with the boundary value
-        boundary_call = _inject_boundary_value(call, req.description)
+        vi = req.violation_input or {}
+        if vi.get("len_check"):
+            boundary_call = _inject_short_string(call, str(vi.get("variable", "")))
+        else:
+            boundary_call = _inject_boundary_value(call, req.description)
 
         code = f"""def {name}{fixture_str}:
     \"\"\"Quell: {req.description}\"\"\"
@@ -237,7 +240,11 @@ class RuleEngine:
             unknown_types=unknown,
         )
 
-    def _not_null(self, req: Requirement) -> GeneratedTest:
+    def _not_null(self, req: Requirement) -> GeneratedTest | None:
+        # Self-attribute checks (if not self.x:) can't be tested by injecting a param
+        if "self." in (req.raw_spec_text or ""):
+            return None
+
         call, fixture_str, fixtures, unknown = self._sig_info(req)
         imp = self._import_line(req)
         setup = self._setup_lines(fixtures)
@@ -313,7 +320,11 @@ class RuleEngine:
             unknown_types=unknown,
         )
 
-    def _silent_fail(self, req: Requirement) -> GeneratedTest:
+    def _silent_fail(self, req: Requirement) -> GeneratedTest | None:
+        # Self-attribute silent fails (if not self.x: return None) need class instantiation
+        if "self." in (req.raw_spec_text or ""):
+            return None
+
         call, fixture_str, fixtures, unknown = self._sig_info(req)
         imp = self._import_line(req)
         setup = self._setup_lines(fixtures)
@@ -388,6 +399,39 @@ def _return_is_optional(annotation: str | None) -> bool:
         or ann.startswith(("Optional[", "typing.Optional["))
         or ("|" in ann and "None" in [p.strip() for p in ann.split("|")])
     )
+
+
+def _inject_short_string(call: str, variable: str) -> str:
+    """For len(x) < N boundary guards: replace the variable stub with a 2-char string."""
+    if variable:
+        # Try named kwarg first: var="test_value" or var=anything
+        modified = re.sub(
+            rf"\b{re.escape(variable)}\s*=\s*\"[^\"]*\"",
+            f'{variable}="ab"',
+            call,
+            count=1,
+        )
+        if modified == call:
+            modified = re.sub(
+                rf"\b{re.escape(variable)}\s*=\s*'[^']*'",
+                f"{variable}='ab'",
+                call,
+                count=1,
+            )
+        if modified == call:
+            modified = re.sub(
+                rf"\b{re.escape(variable)}\s*=\s*\w+",
+                f'{variable}="ab"',
+                call,
+                count=1,
+            )
+        if modified != call:
+            return modified
+    # Fallback: replace first string stub with a short string
+    modified = re.sub(r'"test_value"', '"ab"', call, count=1)
+    if modified == call:
+        modified = call.rstrip(")") + ', value="ab")'
+    return modified
 
 
 def _inject_boundary_value(call: str, description: str) -> str:

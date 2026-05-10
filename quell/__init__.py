@@ -7,7 +7,7 @@ Quick start:
     result = q.check("src/")
     print(f"Score: {result.score:.0%} | Gaps: {len(result.uncovered)}")
 """
-__version__ = "0.6.4"
+__version__ = "0.6.5"
 __author__ = "Shashank Bindal"
 
 from quell.core.models import (
