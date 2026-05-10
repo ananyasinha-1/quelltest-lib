@@ -2,6 +2,7 @@
 Quell CLI — built with Typer.
 
 Commands:
+  quell scan        Scan production code for untested guard clauses (PRIMARY)
   quell check       Scan specs, find gaps, optionally fix
   quell reproduce   Bug description → failing test
   quell prove       Confidence score for a function/file
@@ -14,12 +15,14 @@ Commands:
 """
 from __future__ import annotations
 
+import asyncio
 import json as _json
 from pathlib import Path
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.syntax import Syntax
 from rich.table import Table
 
 from quell import __version__
@@ -177,6 +180,218 @@ def _method_tag(source_value: str, generated_by: str = "") -> str:
     return "[dim][rule-based, no network][/dim]"
 
 
+@app.command("scan")
+def cmd_scan(
+    target: Path = typer.Argument(Path("."), help="File or directory to scan"),
+    fix: bool = typer.Option(False, "--fix", help="Generate failing tests for each gap"),
+    suggest: bool = typer.Option(False, "--suggest", help="Also suggest code fixes via LLM"),
+    no_llm: bool = typer.Option(False, "--no-llm", help="Rule-based only, no LLM"),
+    project_root: Path = typer.Option(Path("."), "--root"),
+) -> None:
+    """
+    Scan production code for untested logic gaps.
+
+    Reads your if/raise patterns directly — no docstrings or types needed.
+    Works on any Python file ever written.
+
+    quell scan src/                   find all logic gaps
+    quell scan src/ --fix             find gaps + generate failing tests
+    quell scan src/ --fix --suggest   find gaps + tests + suggest fixes
+    quell scan src/ --no-llm          rule-based only, zero network
+    """
+    asyncio.run(_scan_async(target, fix, suggest, no_llm, project_root))
+
+
+async def _scan_async(
+    target: Path,
+    fix: bool,
+    suggest: bool,
+    no_llm: bool,
+    project_root: Path,
+) -> None:
+    from quell.core.models import VerificationStatus
+    from quell.coverage.checker import CoverageChecker
+    from quell.spec.code_guard_reader import CodeGuardReader
+    from quell.synthesis.rule_engine import RuleEngine
+
+    config = _load_config(project_root)
+
+    files = (
+        [
+            f for f in target.rglob("*.py")
+            if "test" not in f.name
+            and ".venv" not in str(f)
+            and "__pycache__" not in str(f)
+            and "site-packages" not in str(f)
+        ]
+        if target.is_dir() else [target]
+    )
+
+    console.print(Panel.fit(
+        f"[bold blue]Quell Scan[/bold blue] — "
+        f"reading guard clauses in {len(files)} file(s)\n"
+        "[dim]No docstrings needed. Reading your if/raise patterns.[/dim]"
+    ))
+
+    reader = CodeGuardReader()
+    checker = CoverageChecker(project_root)
+    rule_engine = RuleEngine()
+
+    all_requirements = []
+    for f in files:
+        all_requirements.extend(reader.read(f))
+
+    if not all_requirements:
+        console.print("[yellow]No guard clauses found.[/yellow]")
+        console.print(
+            "[dim]Quell reads if/raise patterns. "
+            "If your code has no guard clauses, nothing to check.[/dim]"
+        )
+        return
+
+    all_requirements = checker.check(all_requirements)
+    gaps = [r for r in all_requirements if not r.is_covered]
+
+    table = Table(
+        title=f"Logic Gaps Found ({len(gaps)} untested / {len(all_requirements)} total)"
+    )
+    table.add_column("File", style="blue")
+    table.add_column("Function", style="cyan")
+    table.add_column("Guard Clause", style="white")
+    table.add_column("Type", style="magenta")
+    table.add_column("Method", style="dim")
+
+    for req in gaps:
+        table.add_row(
+            req.target_file.name,
+            req.target_function,
+            (req.raw_spec_text or req.description)[:50],
+            req.constraint_kind.value,
+            "[dim][rule-based, no network][/dim]",
+        )
+
+    console.print(table)
+
+    if not gaps:
+        console.print("[green]All guard clauses are tested.[/green]")
+        return
+
+    if not fix:
+        console.print(
+            f"\n[yellow]Run [bold]quell scan {target} --fix[/bold] "
+            "to generate failing tests.[/yellow]"
+        )
+        return
+
+    # Generate tests + optional fix suggestions
+    from quell.core.verifier import Verifier
+    from quell.core.writer import Writer
+
+    llm = None
+    synthesizer = None
+    if not no_llm:
+        from quell.llm.client import LLMClient
+        from quell.synthesis.llm_engine import LLMSynthesizer
+        llm = LLMClient.from_config(config)
+        synthesizer = LLMSynthesizer(llm, config)
+
+    if suggest and no_llm:
+        console.print(
+            "[yellow]--suggest requires LLM. Pass without --no-llm to enable.[/yellow]"
+        )
+
+    verifier = Verifier(config, project_root=project_root)
+    writer = Writer(config)
+    fixed = 0
+    llm_used = False
+
+    for i, req in enumerate(gaps, 1):
+        console.print(
+            f"\n[{i}/{len(gaps)}] [cyan]{req.target_function}()[/cyan]"
+            f" — {req.description[:60]}"
+        )
+        console.print(f"  Guard: [dim]{req.raw_spec_text}[/dim]")
+
+        if rule_engine.can_handle(req):
+            candidate = rule_engine.generate(req)
+            generated_by_tag = "[dim][rule-based, no network][/dim]"
+        elif synthesizer:
+            candidate = await synthesizer.synthesize(req)
+            generated_by_tag = "[dim][llm][/dim]"
+            llm_used = True
+        else:
+            console.print("  [dim]Skipped (needs LLM, remove --no-llm)[/dim]")
+            continue
+
+        if not candidate:
+            continue
+
+        with console.status("Verifying test fails on current code (proving gap)..."):
+            result = verifier.verify(req, candidate)
+
+        if result.status == VerificationStatus.VERIFIED:
+            console.print(
+                f"  [green]Gap proven[/green] — test fails on current code "
+                f"{generated_by_tag}"
+            )
+            console.print(Syntax(candidate.test_code, "python", theme="monokai"))
+
+            if suggest and llm and not no_llm:
+                from quell.fix.suggester import FixSuggester
+                suggester = FixSuggester(llm, config)
+                with console.status("Generating fix suggestion..."):
+                    fix_suggestion = await suggester.suggest(req, candidate)
+
+                if fix_suggestion and fix_suggestion.verified:
+                    console.print(
+                        "\n  [bold green]Fix suggestion "
+                        "(verified to make test pass):[/bold green]"
+                    )
+                    console.print(f"  {fix_suggestion.explanation}")
+                    console.print(Syntax(fix_suggestion.diff, "diff", theme="monokai"))
+                    apply = typer.confirm("  Apply this fix?", default=False)
+                    if apply:
+                        req.target_file.write_text(
+                            req.target_file.read_text(encoding="utf-8").replace(
+                                fix_suggestion.original_code,
+                                fix_suggestion.suggested_code,
+                                1,
+                            ),
+                            encoding="utf-8",
+                        )
+                        console.print("  [green]Fix applied[/green]")
+                elif fix_suggestion:
+                    console.print(
+                        "  [yellow]Fix suggested but not verified — review manually[/yellow]"
+                    )
+                    console.print(Syntax(fix_suggestion.diff, "diff", theme="monokai"))
+
+            write = typer.confirm("  Write this test?", default=True)
+            if write:
+                if writer.write(candidate, req.id):
+                    console.print(
+                        f"  [green]Test written to {candidate.test_file_path.name}[/green]"
+                    )
+                    fixed += 1
+
+        elif result.status == VerificationStatus.DOESNT_CATCH_VIOLATION:
+            console.print(
+                "  [yellow]Test generated but doesn't catch the gap — needs manual review[/yellow]"
+            )
+        elif result.status == VerificationStatus.FAILS_ON_CORRECT:
+            console.print("  [red]Generated test breaks correct code — rejected[/red]")
+
+    privacy_line = (
+        "[dim]Your code never left your machine.[/dim]"
+        if not llm_used else
+        "[dim]LLM used for complex cases — only function signatures sent.[/dim]"
+    )
+    console.print(Panel.fit(
+        f"[bold]Done![/bold] {fixed}/{len(gaps)} gaps have failing tests written\n"
+        + privacy_line
+    ))
+
+
 @app.command("check")
 def cmd_check(
     target: str = typer.Argument(".", help="File or directory to check"),
@@ -191,7 +406,12 @@ def cmd_check(
     fmt: str = typer.Option("console", "--format", "-f", help="Output format: console or json"),
     project_root: Path = typer.Option(Path("."), "--root", help="Project root"),
 ) -> None:
-    """Scan specs, find requirement gaps, optionally generate verified tests."""
+    """
+    Check requirement coverage from type annotations and docstrings.
+
+    For production code without types/docstrings, use: quell scan
+    quell scan reads your if/raise patterns directly — no annotations needed.
+    """
     from quell.sdk import Quell
 
     src_list = sources.split(",") if sources else ["docstring", "type"]
