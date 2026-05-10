@@ -16,8 +16,8 @@ Commands:
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import json as _json
+import threading
 from collections.abc import Coroutine
 from pathlib import Path
 from typing import Any
@@ -184,47 +184,51 @@ def _method_tag(source_value: str, generated_by: str = "") -> str:
     return "[dim][rule-based, no network][/dim]"
 
 
-def _run_async(coro: Coroutine[Any, Any, None]) -> None:
-    """Run a coroutine safely whether or not an event loop is already running."""
-    try:
-        asyncio.get_running_loop()
-        # Already inside a running loop (Jupyter, IPython, nested async env).
-        # Spin up a thread with its own loop so asyncio.run() works cleanly.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            pool.submit(asyncio.run, coro).result()
-    except RuntimeError:
-        asyncio.run(coro)
+def _run_coro(coro: Coroutine[Any, Any, Any]) -> Any:
+    """Run a coroutine in a fresh thread with its own event loop.
+
+    Wraps a single async call so the rest of cmd_scan stays synchronous.
+    Each call gets an isolated thread — immune to any outer event loop.
+    """
+    result: list[Any] = [None]
+    exc: list[BaseException] = []
+
+    def _target() -> None:
+        try:
+            result[0] = asyncio.run(coro)
+        except BaseException as e:  # noqa: BLE001
+            exc.append(e)
+
+    t = threading.Thread(target=_target, daemon=True)
+    t.start()
+    t.join()
+    if exc:
+        raise exc[0]
+    return result[0]
 
 
 @app.command("scan")
 def cmd_scan(
     target: Path = typer.Argument(Path("."), help="File or directory to scan"),
     fix: bool = typer.Option(False, "--fix", help="Generate failing tests for each gap"),
-    suggest: bool = typer.Option(False, "--suggest", help="Also suggest code fixes via LLM"),
-    no_llm: bool = typer.Option(False, "--no-llm", help="Rule-based only, no LLM"),
+    suggest: bool = typer.Option(False, "--suggest", help="Also suggest code fixes via LLM (requires --llm)"),
+    llm: bool = typer.Option(False, "--llm", help="Enable LLM for guard types the rule engine can't handle"),
+    no_llm: bool = typer.Option(False, "--no-llm", help="[deprecated] Rule-based only, no LLM (now the default)"),
     project_root: Path = typer.Option(Path("."), "--root"),
 ) -> None:
     """
     Scan production code for untested logic gaps.
 
     Reads your if/raise patterns directly — no docstrings or types needed.
-    Works on any Python file ever written.
+    Works on any Python file ever written. No LLM by default — instant results.
 
     quell scan src/                   find all logic gaps
-    quell scan src/ --fix             find gaps + generate failing tests
-    quell scan src/ --fix --suggest   find gaps + tests + suggest fixes
-    quell scan src/ --no-llm          rule-based only, zero network
+    quell scan src/ --fix             generate failing tests (rule-based, no network)
+    quell scan src/ --fix --llm       also use LLM for complex guard types
+    quell scan src/ --fix --llm --suggest   tests + suggest code fixes
     """
-    _run_async(_scan_async(target, fix, suggest, no_llm, project_root))
-
-
-async def _scan_async(
-    target: Path,
-    fix: bool,
-    suggest: bool,
-    no_llm: bool,
-    project_root: Path,
-) -> None:
+    # Fully synchronous — no asyncio.run() at the top level.
+    # LLM calls inside use _run_coro() which isolates each await in its own thread.
     from quell.core.models import VerificationStatus
     from quell.coverage.checker import CoverageChecker
     from quell.spec.code_guard_reader import CodeGuardReader
@@ -297,29 +301,48 @@ async def _scan_async(
             f"\n[yellow]Run [bold]quell scan {target} --fix[/bold] "
             "to generate failing tests.[/yellow]"
         )
+        # Still write detection-only report
+        detection_items = [
+            {
+                "function": r.target_function,
+                "file": str(r.target_file),
+                "guard": r.raw_spec_text or r.description,
+                "type": r.constraint_kind.value,
+                "outcome": "detected_not_fixed",
+                "reason": "",
+                "generated_test": None,
+            }
+            for r in gaps
+        ]
+        _write_scan_report(project_root, str(target), all_requirements, gaps, detection_items, 0)
         return
 
     # Generate tests + optional fix suggestions
     from quell.core.verifier import Verifier
     from quell.core.writer import Writer
 
-    llm = None
+    # LLM is opt-in for scan: user must pass --llm explicitly.
+    # --no-llm is kept for backwards compat but is now a no-op (it's already the default).
+    use_llm = llm and not no_llm
+    llm_client = None
     synthesizer = None
-    if not no_llm:
+    if use_llm:
         from quell.llm.client import LLMClient
         from quell.synthesis.llm_engine import LLMSynthesizer
-        llm = LLMClient.from_config(config)
-        synthesizer = LLMSynthesizer(llm, config)
+        llm_client = LLMClient.from_config(config)
+        synthesizer = LLMSynthesizer(llm_client, config)
 
-    if suggest and no_llm:
+    if suggest and not use_llm:
         console.print(
-            "[yellow]--suggest requires LLM. Pass without --no-llm to enable.[/yellow]"
+            "[yellow]--suggest requires LLM. Pass --llm to enable.[/yellow]"
         )
 
     verifier = Verifier(config, project_root=project_root)
     writer = Writer(config)
     fixed = 0
-    llm_used = False
+
+    # Report tracking — written to quell-report.json at the end
+    report_items: list[dict[str, Any]] = []
 
     for i, req in enumerate(gaps, 1):
         console.print(
@@ -328,35 +351,68 @@ async def _scan_async(
         )
         console.print(f"  Guard: [dim]{req.raw_spec_text}[/dim]")
 
+        item: dict[str, Any] = {
+            "function": req.target_function,
+            "file": str(req.target_file),
+            "guard": req.raw_spec_text or req.description,
+            "type": req.constraint_kind.value,
+            "outcome": "skipped_no_rule",
+            "reason": "",
+            "generated_test": None,
+        }
+
         if rule_engine.can_handle(req):
             candidate = rule_engine.generate(req)
             generated_by_tag = "[dim][rule-based, no network][/dim]"
+            if candidate is None:
+                item["outcome"] = "skipped_local_var"
+                if "self." in (req.raw_spec_text or ""):
+                    item["reason"] = "guard checks self.attr — needs class instantiation"
+                else:
+                    item["reason"] = (
+                        "guard variable is a local variable (DB result, computed value) "
+                        "not a function parameter — can't inject via stub"
+                    )
+                console.print(f"  [dim]Skipped — {item['reason']}[/dim]")
+                report_items.append(item)
+                continue
         elif synthesizer:
-            candidate = await synthesizer.synthesize(req)
+            # LLM call — run in isolated thread to avoid event loop conflicts
+            candidate = _run_coro(synthesizer.synthesize(req))
             generated_by_tag = "[dim][llm][/dim]"
-            llm_used = True
         else:
-            console.print("  [dim]Skipped (needs LLM, remove --no-llm)[/dim]")
+            item["reason"] = f"no rule for {req.constraint_kind.value} — pass --llm"
+            console.print(
+                f"  [dim]Skipped ({req.constraint_kind.value}) — "
+                "no rule for this guard type. Pass --llm to use LLM.[/dim]"
+            )
+            report_items.append(item)
             continue
 
         if not candidate:
+            item["outcome"] = "skipped_no_gen"
+            item["reason"] = "synthesizer returned no test"
+            report_items.append(item)
             continue
+
+        item["generated_test"] = candidate.test_code
 
         with console.status("Verifying test fails on current code (proving gap)..."):
             result = verifier.verify(req, candidate)
 
         if result.status == VerificationStatus.VERIFIED:
+            item["outcome"] = "verified"
             console.print(
                 f"  [green]Gap proven[/green] — test fails on current code "
                 f"{generated_by_tag}"
             )
             console.print(Syntax(candidate.test_code, "python", theme="monokai"))
 
-            if suggest and llm and not no_llm:
+            if suggest and use_llm and llm_client is not None:
                 from quell.fix.suggester import FixSuggester
-                suggester = FixSuggester(llm, config)
+                suggester_obj = FixSuggester(llm_client, config)
                 with console.status("Generating fix suggestion..."):
-                    fix_suggestion = await suggester.suggest(req, candidate)
+                    fix_suggestion = _run_coro(suggester_obj.suggest(req, candidate))
 
                 if fix_suggestion and fix_suggestion.verified:
                     console.print(
@@ -391,21 +447,79 @@ async def _scan_async(
                     fixed += 1
 
         elif result.status == VerificationStatus.DOESNT_CATCH_VIOLATION:
+            item["outcome"] = "rejected_no_catch"
+            item["reason"] = "test passes even when the guard is violated"
             console.print(
                 "  [yellow]Test generated but doesn't catch the gap — needs manual review[/yellow]"
             )
         elif result.status == VerificationStatus.FAILS_ON_CORRECT:
-            console.print("  [red]Generated test breaks correct code — rejected[/red]")
+            item["outcome"] = "rejected_fails_on_correct"
+            item["reason"] = (
+                "generated stub args trigger a different error on valid code — "
+                "function likely has complex/Pydantic args or depends on self state"
+            )
+            console.print(
+                f"  [red]Rejected — generated stub breaks valid code[/red] "
+                f"[dim](guard: {(req.raw_spec_text or '')[:50]!r})[/dim]"
+            )
+            console.print(
+                "  [dim]Likely cause: function has Pydantic/complex args or checks self state. "
+                "This is a known Quell limitation — tracked in report.[/dim]"
+            )
 
-    privacy_line = (
-        "[dim]Your code never left your machine.[/dim]"
-        if not llm_used else
-        "[dim]LLM used for complex cases — only function signatures sent.[/dim]"
+        report_items.append(item)
+
+    # Always write report
+    _write_scan_report(project_root, str(target), all_requirements, gaps, report_items, fixed)
+
+
+def _write_scan_report(
+    project_root: Path,
+    target: str,
+    all_requirements: list[Any],
+    gaps: list[Any],
+    items: list[dict[str, Any]],
+    written: int,
+) -> None:
+    """Write quell-report.json to project_root. Always called at end of scan."""
+    import datetime
+    import json
+
+    from quell import __version__
+
+    outcomes = [it["outcome"] for it in items]
+    summary = {
+        "total_requirements": len(all_requirements),
+        "gaps_found": len(gaps),
+        "verified_and_written": written,
+        "rejected_fails_on_correct": outcomes.count("rejected_fails_on_correct"),
+        "rejected_no_catch": outcomes.count("rejected_no_catch"),
+        "skipped_no_rule": outcomes.count("skipped_no_rule"),
+        "skipped_local_var": outcomes.count("skipped_local_var"),
+        "skipped_no_gen": outcomes.count("skipped_no_gen"),
+    }
+    report = {
+        "quell_version": __version__,
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+        "target": target,
+        "summary": summary,
+        "results": items,
+    }
+    report_path = project_root / "quell-report.json"
+    report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+    console.print(f"\n[dim]Report written → {report_path}[/dim]")
+    console.print(
+        f"  verified={summary['verified_and_written']}  "
+        f"rejected_stub_mismatch={summary['rejected_fails_on_correct']}  "
+        f"skipped_local_var={summary['skipped_local_var']}  "
+        f"skipped_no_rule={summary['skipped_no_rule']}"
     )
-    console.print(Panel.fit(
-        f"[bold]Done![/bold] {fixed}/{len(gaps)} gaps have failing tests written\n"
-        + privacy_line
-    ))
+    if summary["rejected_fails_on_correct"] > 0:
+        console.print(
+            "  [dim]Tip: share quell-report.json with the Quell maintainer "
+            "so these complex function patterns can be supported.[/dim]"
+        )
 
 
 @app.command("check")

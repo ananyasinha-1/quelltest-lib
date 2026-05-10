@@ -158,8 +158,11 @@ class RuleEngine:
         setup = self._setup_lines(fixtures)
         name = self._name(req)
 
-        # Replace the first numeric arg stub with the boundary value
-        boundary_call = _inject_boundary_value(call, req.description)
+        vi = req.violation_input or {}
+        if vi.get("len_check"):
+            boundary_call = _inject_short_string(call, str(vi.get("variable", "")))
+        else:
+            boundary_call = _inject_boundary_value(call, req.description)
 
         code = f"""def {name}{fixture_str}:
     \"\"\"Quell: {req.description}\"\"\"
@@ -188,7 +191,7 @@ class RuleEngine:
         enum_call = re.sub(r'"test_value"', '"INVALID_VALUE"', call, count=1)
         if enum_call == call:
             # No string stub to replace — append an invalid kwarg
-            enum_call = call.rstrip(")") + ', currency="INVALID_VALUE")'
+            enum_call = _append_kwarg(call, 'currency="INVALID_VALUE"')
 
         code = f"""def {name}{fixture_str}:
     \"\"\"Quell: {req.description}\"\"\"
@@ -237,7 +240,11 @@ class RuleEngine:
             unknown_types=unknown,
         )
 
-    def _not_null(self, req: Requirement) -> GeneratedTest:
+    def _not_null(self, req: Requirement) -> GeneratedTest | None:
+        # Self-attribute checks (if not self.x:) can't be tested by injecting a param
+        if "self." in (req.raw_spec_text or ""):
+            return None
+
         call, fixture_str, fixtures, unknown = self._sig_info(req)
         imp = self._import_line(req)
         setup = self._setup_lines(fixtures)
@@ -251,6 +258,12 @@ class RuleEngine:
                     null_param = k
                     break
 
+        # If the null variable is not an actual kwarg in the generated call, it's a local
+        # variable (DB result, computed value, etc.). Use word-boundary check so "user"
+        # doesn't false-match inside "user_id=" or "join_team_via_link(...)".
+        if null_param and not re.search(rf"\b{re.escape(null_param)}\b\s*=", call):
+            return None
+
         if null_param:
             null_call = re.sub(
                 rf"\b{re.escape(null_param)}\s*=\s*[^,)]+",
@@ -259,14 +272,14 @@ class RuleEngine:
                 count=1,
             )
             if null_call == call:
-                null_call = call.rstrip(")") + f", {null_param}=None)"
+                null_call = _append_kwarg(call, f"{null_param}=None")
         else:
             # Replace first string or numeric stub with None
             null_call = re.sub(r'="test_value"', "=None", call, count=1)
             if null_call == call:
                 null_call = re.sub(r"=\d+", "=None", call, count=1)
             if null_call == call:
-                null_call = call.rstrip(")") + ", value=None)"
+                null_call = _append_kwarg(call, "value=None")
 
         code = f"""def {name}{fixture_str}:
     \"\"\"Quell: {req.description}\"\"\"
@@ -294,7 +307,7 @@ class RuleEngine:
         # Pass a string where a numeric type is expected
         type_call = re.sub(r"=\d+", '="invalid_type"', call, count=1)
         if type_call == call:
-            type_call = call.rstrip(")") + ', value="invalid_type")'
+            type_call = _append_kwarg(call, 'value="invalid_type"')
 
         code = f"""def {name}{fixture_str}:
     \"\"\"Quell: {req.description}\"\"\"
@@ -313,7 +326,11 @@ class RuleEngine:
             unknown_types=unknown,
         )
 
-    def _silent_fail(self, req: Requirement) -> GeneratedTest:
+    def _silent_fail(self, req: Requirement) -> GeneratedTest | None:
+        # Self-attribute silent fails (if not self.x: return None) need class instantiation
+        if "self." in (req.raw_spec_text or ""):
+            return None
+
         call, fixture_str, fixtures, unknown = self._sig_info(req)
         imp = self._import_line(req)
         setup = self._setup_lines(fixtures)
@@ -324,7 +341,7 @@ class RuleEngine:
         if falsy_call == call:
             falsy_call = re.sub(r"=\d+", "=0", call, count=1)
         if falsy_call == call:
-            falsy_call = call.rstrip(")") + ", value=None)"
+            falsy_call = _append_kwarg(call, "value=None")
 
         code = f"""def {name}{fixture_str}:
     \"\"\"Quell: {req.description}\"\"\"
@@ -390,6 +407,46 @@ def _return_is_optional(annotation: str | None) -> bool:
     )
 
 
+def _inject_short_string(call: str, variable: str) -> str:
+    """For len(x) < N boundary guards: replace the variable stub with a 2-char string."""
+    if variable:
+        # Try named kwarg first: var="test_value" or var=anything
+        modified = re.sub(
+            rf"\b{re.escape(variable)}\s*=\s*\"[^\"]*\"",
+            f'{variable}="ab"',
+            call,
+            count=1,
+        )
+        if modified == call:
+            modified = re.sub(
+                rf"\b{re.escape(variable)}\s*=\s*'[^']*'",
+                f"{variable}='ab'",
+                call,
+                count=1,
+            )
+        if modified == call:
+            modified = re.sub(
+                rf"\b{re.escape(variable)}\s*=\s*\w+",
+                f'{variable}="ab"',
+                call,
+                count=1,
+            )
+        if modified != call:
+            return modified
+    # Fallback: replace first string stub with a short string
+    modified = re.sub(r'"test_value"', '"ab"', call, count=1)
+    if modified == call:
+        modified = _append_kwarg(call, 'value="ab"')
+    return modified
+
+
+def _append_kwarg(call: str, kwarg: str) -> str:
+    """Append a kwarg to a call string without producing `func(, kwarg=val)`."""
+    base = call.rstrip(")")
+    sep = "" if base.endswith("(") else ", "
+    return f"{base}{sep}{kwarg})"
+
+
 def _inject_boundary_value(call: str, description: str) -> str:
     """Replace the first numeric stub in call with a boundary-violating value."""
     boundary_val = "0"
@@ -408,6 +465,5 @@ def _inject_boundary_value(call: str, description: str) -> str:
     # Replace first integer stub (=1 or =0) with boundary value
     modified = re.sub(r"=\b\d+\b", f"={boundary_val}", call, count=1)
     if modified == call:
-        # No integer found — append the boundary param
-        modified = call.rstrip(")") + f", value={boundary_val})"
+        modified = _append_kwarg(call, f"value={boundary_val}")
     return modified
