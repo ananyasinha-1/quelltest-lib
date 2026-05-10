@@ -85,7 +85,6 @@ class PySparkRuleEngine:
 
     def _not_null(self, req: Requirement) -> GeneratedTest:
         col = (req.violation_input or {}).get("column", "col")
-        type_name = (req.violation_input or {}).get("type", "StringType")
         name = self._name(req)
         code = f'''def {name}(spark):
     """Quell PySpark: column '{col}' must not be null — {req.raw_spec_text}"""

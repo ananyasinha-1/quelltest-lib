@@ -94,7 +94,8 @@ jobs:
             const emoji = score >= 0.8 ? '🟢' : score >= 0.5 ? '🟡' : '🔴';
 
             let body = `## ${emoji} Quell Report\\n\\n`;
-            body += `**Coverage: ${Math.round(score * 100)}%** (${total - gaps.length}/${total} requirements tested)\\n\\n`;
+            const covered = total - gaps.length;
+            body += `**Coverage: ${Math.round(score * 100)}%** (${covered}/${total} tested)\\n\\n`;
 
             if (gaps.length === 0) {
               body += `✅ All requirements in changed files are tested.\\n`;

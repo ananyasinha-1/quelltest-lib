@@ -155,7 +155,8 @@ def login() -> dict:  # type: ignore[type-arg]
         timeout=8.0,
     )
     if token_resp.status_code >= 400:
-        detail = token_resp.json().get("detail", token_resp.text) if token_resp.headers.get("content-type", "").startswith("application/json") else token_resp.text
+        is_json = token_resp.headers.get("content-type", "").startswith("application/json")
+        detail = token_resp.json().get("detail", token_resp.text) if is_json else token_resp.text
         raise RuntimeError(f"Token exchange failed ({token_resp.status_code}): {detail}")
     token_resp.raise_for_status()
     tokens = token_resp.json()
