@@ -211,20 +211,21 @@ def _run_coro(coro: Coroutine[Any, Any, Any]) -> Any:
 def cmd_scan(
     target: Path = typer.Argument(Path("."), help="File or directory to scan"),
     fix: bool = typer.Option(False, "--fix", help="Generate failing tests for each gap"),
-    suggest: bool = typer.Option(False, "--suggest", help="Also suggest code fixes via LLM"),
-    no_llm: bool = typer.Option(False, "--no-llm", help="Rule-based only, no LLM"),
+    suggest: bool = typer.Option(False, "--suggest", help="Also suggest code fixes via LLM (requires --llm)"),
+    llm: bool = typer.Option(False, "--llm", help="Enable LLM for guard types the rule engine can't handle"),
+    no_llm: bool = typer.Option(False, "--no-llm", help="[deprecated] Rule-based only, no LLM (now the default)"),
     project_root: Path = typer.Option(Path("."), "--root"),
 ) -> None:
     """
     Scan production code for untested logic gaps.
 
     Reads your if/raise patterns directly — no docstrings or types needed.
-    Works on any Python file ever written.
+    Works on any Python file ever written. No LLM by default — instant results.
 
     quell scan src/                   find all logic gaps
-    quell scan src/ --fix             find gaps + generate failing tests
-    quell scan src/ --fix --suggest   find gaps + tests + suggest fixes
-    quell scan src/ --no-llm          rule-based only, zero network
+    quell scan src/ --fix             generate failing tests (rule-based, no network)
+    quell scan src/ --fix --llm       also use LLM for complex guard types
+    quell scan src/ --fix --llm --suggest   tests + suggest code fixes
     """
     # Fully synchronous — no asyncio.run() at the top level.
     # LLM calls inside use _run_coro() which isolates each await in its own thread.
@@ -306,17 +307,20 @@ def cmd_scan(
     from quell.core.verifier import Verifier
     from quell.core.writer import Writer
 
-    llm = None
+    # LLM is opt-in for scan: user must pass --llm explicitly.
+    # --no-llm is kept for backwards compat but is now a no-op (it's already the default).
+    use_llm = llm and not no_llm
+    llm_client = None
     synthesizer = None
-    if not no_llm:
+    if use_llm:
         from quell.llm.client import LLMClient
         from quell.synthesis.llm_engine import LLMSynthesizer
-        llm = LLMClient.from_config(config)
-        synthesizer = LLMSynthesizer(llm, config)
+        llm_client = LLMClient.from_config(config)
+        synthesizer = LLMSynthesizer(llm_client, config)
 
-    if suggest and no_llm:
+    if suggest and not use_llm:
         console.print(
-            "[yellow]--suggest requires LLM. Pass without --no-llm to enable.[/yellow]"
+            "[yellow]--suggest requires LLM. Pass --llm to enable.[/yellow]"
         )
 
     verifier = Verifier(config, project_root=project_root)
@@ -339,8 +343,8 @@ def cmd_scan(
             generated_by_tag = "[dim][llm][/dim]"
         else:
             console.print(
-                "  [dim]Skipped — rule engine can't handle this guard type. "
-                "Use without --no-llm for LLM fallback.[/dim]"
+                f"  [dim]Skipped ({req.constraint_kind.value}) — "
+                "no rule for this guard type. Pass --llm to use LLM.[/dim]"
             )
             continue
 
