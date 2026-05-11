@@ -232,9 +232,14 @@ def cmd_scan(
     from quell.core.models import VerificationStatus
     from quell.coverage.checker import CoverageChecker
     from quell.spec.code_guard_reader import CodeGuardReader
+    from quell.synthesis.app_locator import find_app
+    from quell.synthesis.framework_detector import detect_route
+    from quell.synthesis.framework_engine import FrameworkEngine
     from quell.synthesis.rule_engine import RuleEngine
 
     config = _load_config(project_root)
+    app_info = find_app(project_root)
+    framework_engine = FrameworkEngine()
 
     files = (
         [
@@ -247,10 +252,18 @@ def cmd_scan(
         if target.is_dir() else [target]
     )
 
+    if app_info is not None:
+        app_line = (
+            f"\n[dim]Framework: {app_info.framework} app "
+            f"`{app_info.attr_name}` in {app_info.module_path}[/dim]"
+        )
+    else:
+        app_line = ""
     console.print(Panel.fit(
         f"[bold blue]Quell Scan[/bold blue] — "
         f"reading guard clauses in {len(files)} file(s)\n"
         "[dim]No docstrings needed. Reading your if/raise patterns.[/dim]"
+        f"{app_line}"
     ))
 
     reader = CodeGuardReader()
@@ -361,7 +374,30 @@ def cmd_scan(
             "generated_test": None,
         }
 
-        if rule_engine.can_handle(req):
+        # Route framework handlers through the framework engine first —
+        # rule-engine stubs can't drive Depends() / TestClient.
+        route = detect_route(req.target_function, req.target_file)
+        if route is not None:
+            item["type"] = f"{req.constraint_kind.value} (framework:{route.framework})"
+            if framework_engine.can_handle(route, app_info):
+                candidate = framework_engine.generate(req, route, app_info)
+                generated_by_tag = "[dim][framework, TestClient][/dim]"
+                if candidate is None:
+                    item["outcome"] = "skipped_framework_unsupported"
+                    item["reason"] = f"{route.framework} route — engine couldn't synthesize"
+                    console.print(f"  [dim]Skipped — {item['reason']}[/dim]")
+                    report_items.append(item)
+                    continue
+            else:
+                item["outcome"] = "skipped_framework_no_app"
+                item["reason"] = (
+                    f"{route.framework} route detected but no app object "
+                    "(FastAPI/Flask instance) found in project — can't build TestClient"
+                )
+                console.print(f"  [dim]Skipped — {item['reason']}[/dim]")
+                report_items.append(item)
+                continue
+        elif rule_engine.can_handle(req):
             candidate = rule_engine.generate(req)
             generated_by_tag = "[dim][rule-based, no network][/dim]"
             if candidate is None:
@@ -491,6 +527,7 @@ def _write_scan_report(
     from quell import __version__
 
     outcomes = [it["outcome"] for it in items]
+    framework_items = [it for it in items if "framework" in it.get("type", "")]
     summary = {
         "total_requirements": len(all_requirements),
         "gaps_found": len(gaps),
@@ -501,6 +538,9 @@ def _write_scan_report(
         "skipped_async": outcomes.count("skipped_async"),
         "skipped_local_var": outcomes.count("skipped_local_var"),
         "skipped_no_gen": outcomes.count("skipped_no_gen"),
+        "framework_routes_detected": len(framework_items),
+        "skipped_framework_no_app": outcomes.count("skipped_framework_no_app"),
+        "skipped_framework_unsupported": outcomes.count("skipped_framework_unsupported"),
     }
     report = {
         "quell_version": __version__,
@@ -516,10 +556,15 @@ def _write_scan_report(
     console.print(
         f"  verified={summary['verified_and_written']}  "
         f"rejected={summary['rejected_fails_on_correct']}  "
-        f"skipped_async={summary['skipped_async']}  "
         f"skipped_local_var={summary['skipped_local_var']}  "
         f"skipped_no_rule={summary['skipped_no_rule']}"
     )
+    if summary["framework_routes_detected"]:
+        console.print(
+            f"  framework_routes={summary['framework_routes_detected']}  "
+            f"skipped_no_app={summary['skipped_framework_no_app']}  "
+            f"skipped_unsupported={summary['skipped_framework_unsupported']}"
+        )
     if summary["rejected_fails_on_correct"] > 0:
         console.print(
             "  [dim]Tip: share quell-report.json with the Quell maintainer "
