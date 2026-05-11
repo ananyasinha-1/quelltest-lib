@@ -35,6 +35,7 @@ import ast as _ast
 import re
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -179,10 +180,17 @@ class Verifier:
         # Fall back to sig_inspector's finder, then src.parent.parent.
         cwd = self._resolve_cwd(src)
         try:
+            # sys.executable: ensures the subprocess uses the SAME interpreter that
+            # is running Quell, so the user's installed deps are visible to pytest.
+            # Hardcoded "python" on Windows can hit the MS Store alias or a different
+            # env without the app's deps → ImportError → step 1 fails for the wrong reason.
+            # encoding="utf-8": pytest emits utf-8; without this, text=True decodes
+            # with cp1252 on Windows and crashes on em-dashes in the output.
             r = subprocess.run(
-                ["python", "-m", "pytest", str(test_file),
+                [sys.executable, "-m", "pytest", str(test_file),
                  "-v", "--tb=short", "-q", "--no-header"],
                 capture_output=True, text=True,
+                encoding="utf-8", errors="replace",
                 timeout=self.config.verification_timeout_seconds,
                 cwd=cwd,
             )
