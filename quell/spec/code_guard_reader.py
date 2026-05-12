@@ -205,6 +205,7 @@ class CodeGuardReader:
                 target_function=func.name,
                 target_file=path,
                 raw_spec_text=raw,
+                source_line=if_node.lineno,
                 violation_input=self._extract_null_input(test),
             )
 
@@ -218,6 +219,7 @@ class CodeGuardReader:
                 target_function=func.name,
                 target_file=path,
                 raw_spec_text=raw,
+                source_line=if_node.lineno,
                 violation_input=self._extract_boundary_input(test),
             )
 
@@ -231,6 +233,7 @@ class CodeGuardReader:
                 target_function=func.name,
                 target_file=path,
                 raw_spec_text=raw,
+                source_line=if_node.lineno,
                 violation_input=self._extract_enum_input(test),
             )
 
@@ -244,6 +247,7 @@ class CodeGuardReader:
                 target_function=func.name,
                 target_file=path,
                 raw_spec_text=raw,
+                source_line=if_node.lineno,
             )
 
         # Pattern 6: auth/permission check
@@ -256,6 +260,7 @@ class CodeGuardReader:
                 target_function=func.name,
                 target_file=path,
                 raw_spec_text=raw,
+                source_line=if_node.lineno,
             )
 
         # Pattern 9: magic value check
@@ -268,6 +273,7 @@ class CodeGuardReader:
                 target_function=func.name,
                 target_file=path,
                 raw_spec_text=raw,
+                source_line=if_node.lineno,
             )
 
         # Generic if/raise we couldn't classify specifically
@@ -279,6 +285,7 @@ class CodeGuardReader:
             target_function=func.name,
             target_file=path,
             raw_spec_text=raw,
+            source_line=if_node.lineno,
         )
 
     def _classify_assert(
@@ -298,6 +305,7 @@ class CodeGuardReader:
                 target_function=func.name,
                 target_file=path,
                 raw_spec_text=raw,
+                source_line=node.lineno,
             )
         return Requirement(
             id=str(uuid.uuid4())[:8],
@@ -307,6 +315,7 @@ class CodeGuardReader:
             target_function=func.name,
             target_file=path,
             raw_spec_text=raw,
+            source_line=node.lineno,
         )
 
     def _classify_silent_failure(
@@ -330,6 +339,7 @@ class CodeGuardReader:
                     target_function=func.name,
                     target_file=path,
                     raw_spec_text=raw,
+                    source_line=if_node.lineno,
                 )
         return None
 
@@ -349,6 +359,7 @@ class CodeGuardReader:
             target_function=func.name,
             target_file=path,
             raw_spec_text=raw,
+            source_line=node.lineno,
         )
 
     def _classify_except_raise(
@@ -371,6 +382,7 @@ class CodeGuardReader:
             target_function=func.name,
             target_file=path,
             raw_spec_text=raw,
+            source_line=handler.lineno,
         )
 
     def _classify_standalone_raise(
@@ -391,6 +403,7 @@ class CodeGuardReader:
             target_function=func.name,
             target_file=path,
             raw_spec_text=raw,
+            source_line=raise_node.lineno,
         )
 
     # ── helpers ─────────────────────────────────────────────────────────────
