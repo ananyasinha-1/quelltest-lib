@@ -42,6 +42,8 @@ class RuleEngine:
         }
 
     def generate(self, req: Requirement) -> GeneratedTest | None:
+        if self._all_required_unknown(req):
+            return None  # all required params are complex objects → no useful stub
         if req.constraint_kind == ConstraintKind.MUST_RAISE:
             return self._must_raise(req)
         if req.constraint_kind == ConstraintKind.BOUNDARY:
@@ -119,6 +121,22 @@ class RuleEngine:
         """Return True if the target function is async def."""
         sig = sig_inspector.inspect(req.target_function, req.target_file)
         return sig is not None and sig.is_async
+
+    def _all_required_unknown(self, req: Requirement) -> bool:
+        """Return True when every required param is an unknown type.
+
+        Stub resolution falls back to None for unknown types. A function like
+        send(request: PreparedRequest) becomes send(request=None) which crashes
+        on request.url before reaching any guard — wasting two pytest runs.
+        Skip these early so the report shows skipped_local_var (complex param)
+        instead of rejected_fails_on_correct with an unhelpful AttributeError.
+        """
+        sig = sig_inspector.inspect(req.target_function, req.target_file)
+        if sig is None or not sig.required_params:
+            return False
+        _, _, unknown = sig_inspector.stub_for_call(sig)
+        # If every required param is unknown, the stub is all-None → useless
+        return len(unknown) >= len(sig.required_params)
 
     def _wrap_call(self, call: str, req: Requirement) -> str:
         """Wrap a call expression with asyncio.run(...) if the target is async.
