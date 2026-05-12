@@ -108,7 +108,5 @@ class FrameworkEngine:
         return f"test_quell_fw_{func}_{req.constraint_kind.value}_{req.id[:8]}"
 
     def _test_file(self, req: Requirement) -> Path:
-        return (
-            req.target_file.parent.parent / "tests" /
-            f"test_{req.target_file.stem}.py"
-        )
+        from quell.synthesis.rule_engine import _project_root
+        return _project_root(req.target_file) / "tests" / f"test_{req.target_file.stem}.py"

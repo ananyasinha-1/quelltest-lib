@@ -64,10 +64,7 @@ class RuleEngine:
     # ── helpers ──────────────────────────────────────────────────────────────
 
     def _test_file(self, req: Requirement) -> Path:
-        return (
-            req.target_file.parent.parent / "tests" /
-            f"test_{req.target_file.stem}.py"
-        )
+        return _project_root(req.target_file) / "tests" / f"test_{req.target_file.stem}.py"
 
     def _name(self, req: Requirement) -> str:
         func = re.sub(r"[^a-z0-9_]", "_", req.target_function.lower())
@@ -576,3 +573,18 @@ def _inject_boundary_value(call: str, description: str) -> str:
     if modified == call:
         modified = _append_kwarg(call, f"value={boundary_val}")
     return modified
+
+
+def _project_root(file_path: Path) -> Path:
+    """Walk up from file_path to find the project root.
+
+    Looks for pyproject.toml, setup.py, setup.cfg, or .git as markers.
+    Falls back to two levels up (original behaviour) if none found.
+    """
+    markers = {"pyproject.toml", "setup.py", "setup.cfg", ".git"}
+    current = file_path.parent
+    while current != current.parent:
+        if any((current / m).exists() for m in markers):
+            return current
+        current = current.parent
+    return file_path.parent.parent

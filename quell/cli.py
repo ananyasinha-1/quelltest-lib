@@ -481,7 +481,7 @@ def cmd_scan(
             if write:
                 if writer.write(candidate, req.id):
                     console.print(
-                        f"  [green]Test written to {candidate.test_file_path.name}[/green]"
+                        f"  [green]Test written → {candidate.test_file_path}[/green]"
                     )
                     fixed += 1
 
