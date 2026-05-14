@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import ast
 import uuid
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -116,7 +117,7 @@ class CodeGuardReader:
     @staticmethod
     def _walk_func_body(
         func: ast.FunctionDef | ast.AsyncFunctionDef,
-    ):
+    ) -> Iterator[ast.AST]:
         """Yield all AST nodes inside func without descending into nested functions.
 
         ast.walk recurses into every node including inner function definitions,

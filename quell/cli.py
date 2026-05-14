@@ -229,7 +229,8 @@ def cmd_scan(
         # Emit GitHub Actions workflow commands for inline PR annotations
         for req in gaps:
             line_part = f",line={req.source_line}" if req.source_line else ""
-            guard_text = (req.raw_spec_text or req.description).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+            guard_text = (req.raw_spec_text or req.description)
+            guard_text = guard_text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
             title = f"Untested guard [{req.constraint_kind.value}] in {req.target_function}()"
             print(f"::warning file={req.target_file}{line_part},title={title}::{guard_text}")
         if not gaps:
@@ -333,6 +334,7 @@ def cmd_scan(
         if route is not None:
             item["type"] = f"{req.constraint_kind.value} (framework:{route.framework})"
             if framework_engine.can_handle(route, app_info):
+                assert app_info is not None  # can_handle returns False when app_info is None
                 candidate = framework_engine.generate(req, route, app_info)
                 generated_by_tag = "[dim][framework, TestClient][/dim]"
                 if candidate is None:

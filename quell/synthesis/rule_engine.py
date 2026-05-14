@@ -68,6 +68,14 @@ class RuleEngine:
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
+    def _safe_desc(self, req: Requirement) -> str:
+        """Return description safe to embed inside a triple-double-quote docstring.
+
+        Descriptions that end with a double-quote break the closing delimiter.
+        Replacing all double-quotes with single-quotes prevents the SyntaxError.
+        """
+        return req.description.replace('"', "'")
+
     def _test_file(self, req: Requirement) -> Path:
         return _project_root(req.target_file) / "tests" / f"test_{req.target_file.stem}.py"
 
@@ -180,7 +188,7 @@ class RuleEngine:
         wrapped = self._wrap_call(call, req)
 
         code = f"""def {name}{fixture_str}:
-    \"\"\"Quell: {req.description}\"\"\"
+    \"\"\"Quell: {self._safe_desc(req)}\"\"\"
     import asyncio
     import pytest
     {imp}
@@ -211,7 +219,7 @@ class RuleEngine:
         wrapped = self._wrap_call(boundary_call, req)
 
         code = f"""def {name}{fixture_str}:
-    \"\"\"Quell: {req.description}\"\"\"
+    \"\"\"Quell: {self._safe_desc(req)}\"\"\"
     import asyncio
     import pytest
     {imp}
@@ -244,7 +252,7 @@ class RuleEngine:
         wrapped = self._wrap_call(enum_call, req)
 
         code = f"""def {name}{fixture_str}:
-    \"\"\"Quell: {req.description}\"\"\"
+    \"\"\"Quell: {self._safe_desc(req)}\"\"\"
     import asyncio
     import pytest
     {imp}
@@ -287,7 +295,7 @@ class RuleEngine:
         wrapped = self._wrap_call(magic_call, req)
 
         code = f"""def {name}{fixture_str}:
-    \"\"\"Quell: {req.description}\"\"\"
+    \"\"\"Quell: {self._safe_desc(req)}\"\"\"
     import asyncio
     import pytest
     {imp}
@@ -320,7 +328,7 @@ class RuleEngine:
 
         wrapped = self._wrap_call(call, req)
         code = f"""def {name}{fixture_str}:
-    \"\"\"Quell: {req.description}\"\"\"
+    \"\"\"Quell: {self._safe_desc(req)}\"\"\"
     import asyncio
     {imp}
 {setup}    result = {wrapped}
@@ -380,7 +388,7 @@ class RuleEngine:
 
         wrapped = self._wrap_call(null_call, req)
         code = f"""def {name}{fixture_str}:
-    \"\"\"Quell: {req.description}\"\"\"
+    \"\"\"Quell: {self._safe_desc(req)}\"\"\"
     import asyncio
     import pytest
     {imp}
@@ -410,7 +418,7 @@ class RuleEngine:
         wrapped = self._wrap_call(type_call, req)
 
         code = f"""def {name}{fixture_str}:
-    \"\"\"Quell: {req.description}\"\"\"
+    \"\"\"Quell: {self._safe_desc(req)}\"\"\"
     import asyncio
     import pytest
     {imp}
@@ -465,7 +473,7 @@ class RuleEngine:
 
         wrapped = self._wrap_call(falsy_call, req)
         code = f"""def {name}{fixture_str}:
-    \"\"\"Quell: silent failure gap — {req.description} (should raise, currently returns None)\"\"\"
+    \"\"\"Quell: silent failure gap — {self._safe_desc(req)} (should raise, currently returns None)\"\"\"
     import asyncio
     {imp}
 {setup}    result = {wrapped}
@@ -492,7 +500,7 @@ class RuleEngine:
 
         code = f"""def {name}{fixture_str}:
     \"\"\"
-    Quell bug reproduction: {req.description}
+    Quell bug reproduction: {self._safe_desc(req)}
     Triggering input: {inputs}
     Expected: {expected}
     This test FAILS while the bug exists. Fix the code to make it pass.
@@ -529,7 +537,7 @@ class RuleEngine:
         wrapped = self._wrap_call(call, req)
 
         code = f"""def {name}{fixture_str}:
-    \"\"\"Quell: {req.description}\"\"\"
+    \"\"\"Quell: {self._safe_desc(req)}\"\"\"
     import asyncio
     import pytest
     {imp}
