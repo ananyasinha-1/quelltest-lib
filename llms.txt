@@ -12,18 +12,18 @@ The key differentiator is the 5-gate verification pipeline: every generated test
 quell find src/
 ```
 
-Scans for untested edge cases and shows three-bucket output. Add `--fix` to write WRITTEN tests. Add `--format github` for CI annotations.
+Scans for untested edge cases and shows three-bucket output. Add `--fix` to write WRITTEN tests. Add `--auto` to skip confirmation prompts in CI.
 
 ## Docs
 
-- [Introduction](https://quell.buildsbyshashank.tech/docs): What Quell is
-- [Quickstart](https://quell.buildsbyshashank.tech/docs/quickstart): Scan your first project in 2 minutes
-- [How It Works](https://quell.buildsbyshashank.tech/docs/how-it-works): 5-gate pipeline and PRS
-- [CLI Reference](https://quell.buildsbyshashank.tech/docs/cli): All commands
-- [Configuration](https://quell.buildsbyshashank.tech/docs/configuration/pyproject): pyproject.toml options
-- [CI/CD Guide](https://quell.buildsbyshashank.tech/docs/guides/ci-cd): GitHub Actions integration
-- [SDK Reference](https://quell.buildsbyshashank.tech/docs/sdk/overview): Python API
-- [Constraint Kinds](https://quell.buildsbyshashank.tech/docs/reference/constraint-kinds): MUST_RAISE, BOUNDARY, ENUM_VALID, NOT_NULL, TYPE_CHECK, MUST_RETURN
+- [Introduction](https://quelltest.com/docs): What Quell is and how it fits in your workflow
+- [Quickstart](https://quelltest.com/docs/quickstart): Find your first untested edge case in under 5 minutes
+- [How It Works](https://quelltest.com/docs/how-it-works): 5-gate pipeline and three-bucket output explained
+- [CLI Reference](https://quelltest.com/docs/cli): All 7 commands documented
+- [Configuration](https://quelltest.com/docs/configuration/pyproject): pyproject.toml options, thresholds, LLM providers
+- [CI Integration](https://quelltest.com/docs/guides/ci-integration): GitHub Actions, GitLab CI, pre-commit
+- [Production Readiness Score](https://quelltest.com/docs/reference/prs): PRS formula and tiers
+- [Constraint Kinds](https://quelltest.com/docs/reference/constraint-kinds): MUST_RAISE, BOUNDARY, ENUM_VALID, NOT_NULL, TYPE_CHECK, MUST_RETURN
 
 ## Install
 
@@ -31,7 +31,13 @@ Scans for untested edge cases and shows three-bucket output. Add `--fix` to writ
 pip install quelltest
 ```
 
-## Quick example
+Optional extras:
+```
+pip install quelltest[groq]      # Groq LLM fallback
+pip install quelltest[pyspark]   # PySpark schema scanning
+```
+
+## Three-bucket output
 
 ```
 quell find src/
@@ -95,11 +101,11 @@ Only Gate 4+5 survivors become WRITTEN tests. Earlier failures become SCAFFOLDED
 - CLI command: quell
 - Version: 2.0.0
 - GitHub: https://github.com/quelltest/quelltest-lib
-- Website: https://quell.buildsbyshashank.tech
+- Website: https://quelltest.com
 - License: MIT
-- Author: Shashank Bindal
+- Author: Shashank Bindal (Gurugram, Haryana, India)
 - Python: 3.11+
-- Spec sources: Python docstrings, Pydantic v2 Field constraints, PySpark StructType
+- Spec sources: Python docstrings, Pydantic v2 Field constraints, PySpark StructType, type annotations
 - Constraint kinds: MUST_RAISE, MUST_RETURN, BOUNDARY, ENUM_VALID, NOT_NULL, TYPE_CHECK
 - LLM required: No (rule engine handles ~75%)
 - Default LLM provider: Groq (llama-3.3-70b-versatile) — fast, free tier available
