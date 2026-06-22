@@ -99,6 +99,39 @@ When reporting bugs:
 
 ---
 
+## Linting & Pre-Submission Checks
+
+Before submitting a Pull Request, please ensure that your changes pass the project's quality checks.
+
+### Linting
+
+Run the linter and resolve any reported issues:
+
+```bash
+npm run lint
+```
+
+### Tests
+
+Run the test suite to verify that your changes do not introduce regressions:
+
+```bash
+npm test
+```
+
+If the project uses a different testing command, please use the appropriate command documented by the maintainers.
+
+### Pre-Submission Checklist
+
+Before opening a PR, make sure that:
+
+* All lint checks pass successfully.
+* Existing tests pass without failures.
+* New functionality includes relevant tests whenever applicable.
+* Documentation is updated if your changes affect usage or behavior.
+* No unrelated files or changes are included in the PR.
+
+
 ## Community Standards
 
 By participating in this project, you agree to follow the project's Code of Conduct.
