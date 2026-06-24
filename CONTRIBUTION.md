@@ -1,14 +1,8 @@
-# Contributing to Quelltest
+ # Contributing to quelltest-lib
 
-Thank you for your interest in contributing to Quell!
+Thank you for your interest in contributing to quelltest-lib!
 
-It helps developers discover untested edge cases before they reach production. We welcome contributions that improve reliability, testing coverage, developer experience, documentation, and overall project quality.
-
----
-
-## ⭐ Star the Repository
-
-If you find it useful, please consider starring the repository to support the project.
+quelltest-lib helps developers discover untested edge cases before they reach production. Contributions that improve reliability, test coverage, documentation, and developer experience are welcome.
 
 ---
 
@@ -18,32 +12,20 @@ You can contribute by:
 
 * Fixing bugs
 * Improving edge-case detection
-* Enhancing testing workflows
+* Enhancing test coverage
 * Improving documentation
 * Adding new features
 * Improving performance and reliability
-* Writing additional test coverage
 
 ---
 
 ## Getting Started
 
-### 1. Fork the Repository
-
-Create your own fork of the project.
-
-### 2. Clone Your Fork
-
-```bash
-git clone https://github.com/YOUR_USERNAME/quelltest.git
-cd quelltest
-```
-
-### 3. Create a Branch
-
-```bash
-git checkout -b feature/your-feature-name
-```
+1. Fork the repository.
+2. Clone your fork locally.
+3. Create a new branch for your changes.
+4. Make your changes and test them.
+5. Submit a Pull Request.
 
 ---
 
@@ -51,23 +33,22 @@ git checkout -b feature/your-feature-name
 
 Please ensure that:
 
-* Code follows the existing style and architecture.
-* Changes remain focused on a single issue.
-* New functionality includes appropriate tests.
+* Changes are focused on a single issue.
+* Code follows the existing project structure and style.
 * Documentation is updated when necessary.
-* Code remains clean, maintainable, and readable.
+* New functionality includes appropriate tests where applicable.
+* Existing functionality is not broken.
 
 ---
 
 ## Pull Request Guidelines
 
-Before opening a PR:
+Before opening a Pull Request:
 
+* Review your changes carefully.
 * Test your changes locally.
-* Perform a self-review.
 * Reference the related issue.
-* Include screenshots if UI changes are involved.
-* Keep pull requests focused and easy to review.
+* Keep the PR focused and easy to review.
 
 Example:
 
@@ -77,14 +58,14 @@ Fixes #123
 
 ---
 
-## Testing Expectations
+## Testing
 
-Since it focuses on finding edge cases and improving software reliability:
+Before submitting your changes:
 
-* Add tests whenever possible.
-* Validate bug fixes with reproducible test cases.
-* Ensure existing functionality is not broken.
-* Consider unusual or boundary-case inputs during testing.
+* Ensure existing tests pass successfully.
+* Add tests for new functionality whenever possible.
+* Verify bug fixes with reproducible test cases.
+* Consider edge cases and boundary conditions.
 
 ---
 
@@ -94,8 +75,9 @@ When reporting bugs:
 
 * Provide clear reproduction steps.
 * Include expected and actual behavior.
-* Share relevant logs or screenshots.
-* Mention environment details when applicable.
+* Share relevant logs or screenshots when applicable.
+
+---
 
 ## Community Standards
 
@@ -105,4 +87,4 @@ Please review `CODE_OF_CONDUCT.md` before contributing.
 
 ---
 
-Thank you for helping make software more reliable with Quell!
+Thank you for helping improve quelltest-lib!
