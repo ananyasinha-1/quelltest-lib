@@ -4,7 +4,7 @@
 
 We as contributors, maintainers, and community members pledge to make participation in the Quell community a respectful, inclusive, and harassment-free experience for everyone.
 
-We are committed to fostering an environment where developers can collaborate to improve software quality, testing practices, and reliability through open and constructive contributions.
+We are committed to fostering an environment where developers can collaborate to improve software quality by identifying edge cases, strengthening test coverage, and building reliable software together.
 
 ## Our Standards
 
@@ -29,10 +29,11 @@ Examples of unacceptable behavior include:
 
 Contributors are encouraged to:
 
-* Prioritize code quality and maintainability.
-* Write clear, reproducible test cases.
-* Document assumptions and limitations.
-* Promote reliable and secure software development practices.
+- Prioritize code quality and maintainability.
+- Write clear and reproducible test cases.
+- Consider edge cases and unusual execution paths.
+- Document assumptions and limitations.
+- Promote reliable and secure software engineering practices.
 
 ## Enforcement Responsibilities
 
@@ -48,6 +49,6 @@ Instances of unacceptable behavior may be reported to the project maintainers th
 
 ## Attribution
 
-Adapted from Contributor Covenant v2.1:
+## Attribution
 
-https://www.contributor-covenant.org/version/2/1/code_of_conduct.html
+This Code of Conduct is adapted from the Contributor Covenant v2.1: https://www.contributor-covenant.org/version/2/1/code_of_conduct.html
