@@ -10,22 +10,27 @@ quelltest-lib helps developers discover untested edge cases before they reach pr
 
 You can contribute by:
 
-* Fixing bugs
-* Improving edge-case detection
-* Enhancing test coverage
-* Improving documentation
-* Adding new features
-* Improving performance and reliability
-
+- Improving edge-case detection algorithms
+- Enhancing Production Readiness Score logic
+- Improving CLI commands and documentation
+- Adding support for additional Python project structures
+- Improving false-positive detection
+- Writing or expanding automated tests
+- Improving SDK examples
+- Optimizing performance
 ---
 
-## Getting Started
+## Development Setup
 
-1. Fork the repository.
-2. Clone your fork locally.
-3. Create a new branch for your changes.
-4. Make your changes and test them.
-5. Submit a Pull Request.
+Step 1: Clone the repository.
+
+Step 2: Create a virtual environment.
+
+Step 3: Install development dependencies.
+
+Step 4: Run the test suite before submitting changes.
+
+Step 5: Verify that your changes do not introduce regressions.
 
 ---
 
@@ -60,15 +65,29 @@ Fixes #123
 
 ## Testing
 
-Before submitting your changes:
+Before opening a Pull Request, please ensure that you have run the project's development checks:
 
-* Ensure existing tests pass successfully.
-* Add tests for new functionality whenever possible.
-* Verify bug fixes with reproducible test cases.
-* Consider edge cases and boundary conditions.
+```bash
+uv sync --dev
+uv run pytest tests/ -v
+uv run ruff check .
+uv run ruff format --check .
+```
+
+Please ensure that all tests pass successfully and no linting or formatting issues remain before submitting your changes.
 
 ---
+## Before Opening a Pull Request
 
+Please ensure that:
+
+- Existing tests pass successfully.
+- Ruff reports no issues.
+- Code formatting is correct.
+- Documentation is updated if required.
+- Changes remain focused on a single issue.
+
+---
 ## Reporting Issues
 
 When reporting bugs:
